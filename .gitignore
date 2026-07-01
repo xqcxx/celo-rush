@@ -1,0 +1,41 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# copyrighted music — kept local, NOT published (see README)
+public/assets/audio/music/*.mp3
+
+# internal planning docs, references, and the archived 2D build — kept local
+refs/
+legacy-2d/
+notes/
+bulldrop.txt
+chatgpt.md
+grokthesis.md
+
+# reference moodboard image (kept local)
+/photo_*.jpeg
+
+# scratch
+scratchpad/

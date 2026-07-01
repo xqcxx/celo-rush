@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <!-- CSP (defense-in-depth; full policy incl. frame-ancestors is in public/_headers).
+         When the Railway API is wired, add its origin to connect-src. -->
+    <meta
+        http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self'; font-src 'self'; connect-src 'self' https://api.trybullrush.xyz; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
+    />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#05060a" />
+    <meta name="description" content="Ride The Black Bull through the trenches. Dodge jeets, snipers, and MEV. Charge as far as you can." />
+    <meta property="og:title" content="BULL RUSH — Charge Forward" />
+    <meta property="og:description" content="Enter the Land of the Memecoins. Ride The Black Bull ($ANSEM). Dodge jeets, snipers, and MEV. How far can you charge?" />
+    <meta property="og:image" content="/og-card.jpg" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="BULL RUSH — Charge Forward" />
+    <meta name="twitter:description" content="Ride The Black Bull ($ANSEM). Dodge jeets, snipers, and MEV. How far can you charge?" />
+    <meta name="twitter:image" content="/og-card.jpg" />
+    <title>BULL RUSH — Charge Forward</title>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+</body>
+</html>

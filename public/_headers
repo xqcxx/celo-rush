@@ -1,0 +1,15 @@
+# Cloudflare Pages security headers (applied to every route).
+# frame-ancestors + X-Frame-Options can ONLY be set as real headers (not <meta>),
+# so clickjacking protection lives here.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self'; font-src 'self'; connect-src 'self' https://api.trybullrush.xyz; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cross-Origin-Opener-Policy: same-origin
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+
+# Immutable, content-hashed build output — cache forever.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
