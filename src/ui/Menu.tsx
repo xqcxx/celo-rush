@@ -3,6 +3,8 @@ import { Audio } from '../audio';
 import { ConnectButton } from '../wallet/ConnectButton';
 import { CheckInButton } from '../onchain/CheckInButton';
 import { RegisterGate } from './RegisterGate';
+import { AchievementsPanel } from './AchievementsPanel';
+import { ShopPanel } from './ShopPanel';
 
 export function Menu() {
     const enterGate = useGameStore((s) => s.enterGate);
@@ -40,6 +42,14 @@ export function Menu() {
                 <button className="btn ghost" onClick={openBoard}>
                     LEADERBOARD
                 </button>
+
+                {isRegistered && (
+                    <>
+                        <AchievementsPanel />
+                        <ShopPanel />
+                    </>
+                )}
+
                 <div className="controls">
                     <span>◀ ▶ / A D — switch lane · SPACE / tap — dash</span>
                 </div>

@@ -847,3 +847,90 @@ body,
     background: rgba(57, 255, 20, 0.08);
     text-shadow: 0 0 8px rgba(57, 255, 20, 0.5);
 }
+
+.achievements-panel, .shop-panel {
+    max-height: 50vh;
+    overflow-y: auto;
+    width: 100%;
+}
+.ach-section {
+    width: 100%;
+    margin: 6px 0;
+}
+.ach-label {
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--cyan);
+}
+.ach-label.earned-label {
+    color: var(--neon);
+}
+.ach-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    margin-top: 6px;
+    gap: 10px;
+}
+.ach-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-align: left;
+}
+.ach-info strong { font-size: 13px; color: #eafff0; }
+.ach-info small { font-size: 10px; color: #8a93a6; }
+.ach-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+}
+.ach-badge {
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: rgba(57, 255, 20, 0.08);
+    border: 1px solid rgba(57, 255, 20, 0.25);
+}
+.ach-name {
+    font-size: 11px;
+    color: var(--neon);
+}
+
+.shop-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    margin-top: 4px;
+}
+.shop-item {
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    text-align: left;
+}
+.shop-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.shop-item-name { font-size: 14px; font-weight: 700; color: #eafff0; }
+.shop-item-cat {
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    color: var(--cyan);
+    text-transform: uppercase;
+}
+.shop-item-desc { font-size: 11px; color: #8a93a6; margin: 4px 0; }
+.shop-item-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 6px;
+}
+.shop-item-price { font-size: 13px; font-weight: 700; color: var(--neon); }
