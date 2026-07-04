@@ -7,6 +7,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas';
+import { createPublicClient, getAddress, http, isAddress } from 'viem';
+import { celo, celoAlfajores } from 'viem/chains';
 import { sql, initSchema } from './db.ts';
 import { redis, LB, rateLimit, recordScore, topScores } from './redis.ts';
 import { rankFor } from './ranks.ts';
@@ -24,6 +26,25 @@ const esc = (s: string) =>
 
 const app = new Hono();
 
+const CHAIN_ID = Number(process.env.CELO_CHAIN_ID || 44787);
+const CELO_RPC_URL = process.env.CELO_RPC_URL || 'https://alfajores-forno.celo-testnet.org';
+const PLAYER_REGISTRY_ADDRESS = process.env.PLAYER_REGISTRY_CONTRACT_ADDRESS;
+
+const PLAYER_REGISTRY_ABI = [
+    {
+        type: 'function',
+        name: 'isRegistered',
+        inputs: [{ name: 'wallet', type: 'address' }],
+        outputs: [{ type: 'bool' }],
+        stateMutability: 'view',
+    },
+] as const;
+
+const publicClient = createPublicClient({
+    chain: CHAIN_ID === celo.id ? celo : celoAlfajores,
+    transport: http(CELO_RPC_URL),
+});
+
 const allow = (process.env.ALLOWED_ORIGIN || '*').split(',').map((s) => s.trim());
 app.use(
     '*',
@@ -40,14 +61,40 @@ const ipOf = (c: { req: { header: (k: string) => string | undefined } }) =>
 app.get('/', (c) => c.text('BULL RUSH API — charge.'));
 app.get('/health', (c) => c.json({ ok: true }));
 
-const walletRegex = /^0x[a-fA-F0-9]{40}$/;
+function normalizeWallet(raw: unknown): string | null {
+    if (typeof raw !== 'string' || !isAddress(raw)) return null;
+    return getAddress(raw).toLowerCase();
+}
+
+async function isPlayerRegistered(wallet: string): Promise<boolean> {
+    const rows = await sql`SELECT wallet FROM players WHERE wallet = ${wallet}`;
+    if (rows.length > 0) return true;
+
+    if (!PLAYER_REGISTRY_ADDRESS || !isAddress(PLAYER_REGISTRY_ADDRESS)) return false;
+
+    const onChain = await publicClient.readContract({
+        address: getAddress(PLAYER_REGISTRY_ADDRESS),
+        abi: PLAYER_REGISTRY_ABI,
+        functionName: 'isRegistered',
+        args: [getAddress(wallet)],
+    });
+
+    if (onChain) {
+        await sql`INSERT INTO players (wallet) VALUES (${wallet}) ON CONFLICT (wallet) DO NOTHING`;
+    }
+
+    return onChain;
+}
 
 app.get('/api/players/:wallet', async (c) => {
-    const wallet = c.req.param('wallet').toLowerCase();
-    if (!walletRegex.test(wallet)) return c.json({ error: 'invalid_wallet' }, 400);
+    const wallet = normalizeWallet(c.req.param('wallet'));
+    if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
 
     const rows = await sql`SELECT wallet, registered_at FROM players WHERE wallet = ${wallet}`;
-    if (rows.length === 0) return c.json({ registered: false });
+    if (rows.length === 0) {
+        const registered = await isPlayerRegistered(wallet);
+        return c.json({ registered });
+    }
 
     return c.json({ registered: true, wallet: rows[0].wallet, registeredAt: rows[0].registered_at });
 });
@@ -57,23 +104,35 @@ app.post('/api/players/register', async (c) => {
     if (!(await rateLimit(ip, 'register', 10, 60))) return c.json({ error: 'rate_limited' }, 429);
 
     const body = await c.req.json().catch(() => null);
-    const wallet = (body?.wallet || '').toLowerCase();
-    if (!walletRegex.test(wallet)) return c.json({ error: 'invalid_wallet' }, 400);
+    const wallet = normalizeWallet(body?.wallet);
+    if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
 
     const existing = await sql`SELECT wallet FROM players WHERE wallet = ${wallet}`;
     if (existing.length > 0) return c.json({ registered: true, wallet });
 
-    await sql`INSERT INTO players (wallet) VALUES (${wallet})`;
+    if (!(await isPlayerRegistered(wallet))) return c.json({ error: 'not_registered_onchain' }, 400);
+
+    await sql`INSERT INTO players (wallet) VALUES (${wallet}) ON CONFLICT (wallet) DO NOTHING`;
     return c.json({ registered: true, wallet });
+});
+
+const StartRunSchema = z.object({
+    wallet: z.string(),
 });
 
 app.post('/api/run/start', async (c) => {
     const ip = ipOf(c);
     if (!(await rateLimit(ip, 'start', 60, 60))) return c.json({ error: 'rate_limited' }, 429);
 
+    const parsed = StartRunSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: 'wallet_required' }, 400);
+    const wallet = normalizeWallet(parsed.data.wallet);
+    if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
+    if (!(await isPlayerRegistered(wallet))) return c.json({ error: 'player_not_registered' }, 403);
+
     const token = randomUUID();
     const seed = randomBytes(16).toString('hex');
-    await redis.set(`seed:${token}`, JSON.stringify({ seed, t: Date.now(), ip }), 'EX', 180);
+    await redis.set(`seed:${token}`, JSON.stringify({ seed, t: Date.now(), ip, wallet }), 'EX', 180);
     return c.json({ seed, token });
 });
 
@@ -91,7 +150,7 @@ const SubmitSchema = z.object({
     snipersSurvived: z.number().int().min(0).max(100_000).optional(),
     mevAvoided: z.number().int().min(0).max(100_000).optional(),
     maxCombo: z.number().int().min(0).max(100_000).optional(),
-    wallet: z.string().max(64).optional(),
+    wallet: z.string(),
     ref: z.string().regex(/^[A-Za-z0-9_-]{1,24}$/).optional(),
 });
 
@@ -102,10 +161,15 @@ app.post('/api/run/submit', async (c) => {
     const parsed = SubmitSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: 'bad_request' }, 400);
     const b = parsed.data;
+    const wallet = normalizeWallet(b.wallet);
+    if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
+    if (!(await isPlayerRegistered(wallet))) return c.json({ error: 'player_not_registered' }, 403);
 
     // one-time token: must exist (issued by /run/start, not yet used)
     const stored = await redis.getdel(`seed:${b.token}`);
     if (!stored) return c.json({ error: 'invalid_token' }, 400);
+    const runMeta = JSON.parse(stored) as { wallet?: string };
+    if (runMeta.wallet !== wallet) return c.json({ error: 'wallet_token_mismatch' }, 400);
 
     // anti-cheat plausibility gate
     const sec = b.durationMs / 1000;
@@ -131,7 +195,7 @@ app.post('/api/run/submit', async (c) => {
         mev_avoided: b.mevAvoided ?? 0,
         max_combo: b.maxCombo ?? 0,
         duration_ms: b.durationMs,
-        wallet: b.wallet ?? null,
+        wallet,
         referrer: b.ref ?? null,
         suspicious,
     })}`;
