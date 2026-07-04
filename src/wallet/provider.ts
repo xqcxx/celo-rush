@@ -66,3 +66,7 @@ export function getChainId(): number {
 export function getActiveChain() {
     return targetChainId === celo.id ? celoMainnet : celoTestnet;
 }
+
+export function chainDisplayName(): string {
+    return targetChainId === celo.id ? 'Celo Mainnet' : 'Celo Alfajores Testnet';
+}
