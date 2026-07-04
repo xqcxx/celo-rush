@@ -1,4 +1,7 @@
 import { useEffect } from 'react';
+import { WagmiProvider } from 'wagmi';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { config } from './wallet/provider';
 import { useGameStore, refs } from './store';
 import { Audio } from './audio';
 import { storage } from './storage';
@@ -11,8 +14,11 @@ import { GameOverScreen } from './ui/GameOver';
 import { Board } from './ui/Board';
 import { Cinematic } from './ui/Cinematic';
 import { MusicChip } from './ui/MusicChip';
+import { WalletSyncer } from './wallet/WalletSyncer';
 
-export function App() {
+const queryClient = new QueryClient();
+
+function AppInner() {
     const phase = useGameStore((s) => s.phase);
     const muted = useGameStore((s) => s.muted);
     const flashKey = useGameStore((s) => s.flashKey);
@@ -23,12 +29,9 @@ export function App() {
         storage.captureRef();
     }, []);
 
-    // Browsers block audio until a user gesture — start it on the FIRST interaction
-    // anywhere (tapping the cinematic, a key, a click), not just specific buttons.
     useEffect(() => {
         const unlock = () => {
             Audio.unlock();
-            // honor a previously-chosen radio mode (else AUTO picks a random track)
             const m = useGameStore.getState().musicMode;
             if (m >= 0) Audio.setMode(m);
             window.removeEventListener('pointerdown', unlock);
@@ -53,7 +56,6 @@ export function App() {
         if (phase === 'playing') {
             Audio.unlock();
             Audio.cycleMusic();
-            // grab a server seed + one-time submit token (offline-safe)
             void startRun().then(({ seed, token }) => {
                 refs.seed = seed;
                 refs.token = token;
@@ -69,6 +71,7 @@ export function App() {
 
     return (
         <div className="app">
+            <WalletSyncer />
             <Game />
             {phase === 'playing' && <Hud />}
             {phase === 'intro' && <Cinematic />}
@@ -87,5 +90,15 @@ export function App() {
             </button>
             {phase !== 'playing' && <MusicChip />}
         </div>
+    );
+}
+
+export function App() {
+    return (
+        <WagmiProvider config={config}>
+            <QueryClientProvider client={queryClient}>
+                <AppInner />
+            </QueryClientProvider>
+        </WagmiProvider>
     );
 }

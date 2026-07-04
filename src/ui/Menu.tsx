@@ -1,5 +1,7 @@
 import { useGameStore } from '../store';
 import { Audio } from '../audio';
+import { ConnectButton } from '../wallet/ConnectButton';
+import { CheckInButton } from '../onchain/CheckInButton';
 
 export function Menu() {
     const enterGate = useGameStore((s) => s.enterGate);
@@ -13,12 +15,14 @@ export function Menu() {
             <div className="menu-hero" />
             <div className="menu-scrim" />
             <div className="menu-content">
-                <div className="kicker">THE LAND OF THE MEMECOINS</div>
-                <img className="logo" src="/logo.png" alt="BULL RUSH" />
-                <p className="sub">Ride The Black Bull ($ANSEM). Dodge jeets, snipers &amp; MEV. Charge as far as you can.</p>
+                <div className="kicker">THE CELO NEON CITY</div>
+                <img className="logo" src="/logo.png" alt="CELO RUSH" />
+                <p className="sub">Surf the Celo chain. Dodge rug pulls, scam bots &amp; gas spikes. Charge as far as you can.</p>
                 <button className="btn primary" onClick={begin}>
                     ENTER THE GATE ▸
                 </button>
+                <ConnectButton />
+                <CheckInButton />
                 <button className="btn ghost" onClick={openBoard}>
                     LEADERBOARD
                 </button>

@@ -720,3 +720,55 @@ body,
     color: #8a93a6;
     font-size: 10px;
 }
+
+.wallet-btn {
+    background: rgba(57, 255, 20, 0.08);
+    color: var(--neon);
+    border: 1px solid rgba(57, 255, 20, 0.35);
+    font-size: 14px;
+    padding: 12px 26px;
+    margin-top: 6px;
+}
+.wallet-btn:hover {
+    background: rgba(57, 255, 20, 0.18);
+    border-color: var(--neon);
+    transform: translateY(-1px);
+}
+.wallet-btn.connected {
+    background: rgba(57, 255, 20, 0.15);
+    border-color: var(--neon);
+    text-shadow: 0 0 8px rgba(57, 255, 20, 0.5);
+}
+.wallet-btn.wrong-chain {
+    border-color: var(--red);
+    color: var(--red);
+    background: rgba(255, 45, 58, 0.1);
+    text-shadow: 0 0 8px rgba(255, 45, 58, 0.6);
+}
+.wallet-btn.connecting {
+    opacity: 0.6;
+}
+.wallet-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.checkin-btn {
+    font-size: 14px;
+    padding: 12px 26px;
+    margin-top: 0;
+}
+
+.checkin-done {
+    padding: 10px 20px;
+    border: 1px solid rgba(57, 255, 20, 0.4);
+    border-radius: 999px;
+    background: rgba(57, 255, 20, 0.08);
+}
+.checkin-streak {
+    color: var(--neon);
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.12em;
+    text-shadow: 0 0 10px rgba(57, 255, 20, 0.5);
+}

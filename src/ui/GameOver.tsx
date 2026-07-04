@@ -8,11 +8,16 @@ export function GameOverScreen() {
     const start = useGameStore((s) => s.start);
     const reset = useGameStore((s) => s.reset);
     const openBoard = useGameStore((s) => s.openBoard);
+    const walletAddress = useGameStore((s) => s.walletAddress);
 
     const [name, setName] = useState(() => storage.name() || '');
     const [globalPos, setGlobalPos] = useState<number | null>(null);
     const localId = useRef<string | null>(null);
     const submitted = useRef(false);
+
+    const displayName = walletAddress
+        ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
+        : (name || '').trim() || 'ANON';
 
     const onName = (v: string) => {
         const clean = v.replace(/\s+/g, ' ').slice(0, 16);
@@ -21,12 +26,10 @@ export function GameOverScreen() {
         if (localId.current) storage.rename(localId.current, clean || 'ANON');
     };
 
-    // Global submit happens ONCE, with the name the player actually chose
-    // (token is one-time). Triggered by acting on a button, or a grace timeout.
     const commit = () => {
         if (submitted.current || !result) return;
         submitted.current = true;
-        const finalName = (name || '').trim() || 'ANON';
+        const finalName = walletAddress || (name || '').trim() || 'ANON';
         if (localId.current) storage.rename(localId.current, finalName);
         if (refs.token) {
             void submitRun({
@@ -36,6 +39,7 @@ export function GameOverScreen() {
                 score: result.score,
                 durationMs: result.durationMs,
                 deathCause: result.cause,
+                wallet: walletAddress || undefined,
                 ref: storage.ref() || undefined,
             }).then((res) => {
                 if (res && res.position) setGlobalPos(res.position);
@@ -51,15 +55,14 @@ export function GameOverScreen() {
     const share = () => {
         if (!result) return;
         const cause = result.cause.replace(/\.$/, '').toLowerCase();
-        const handle = (name || '').trim() || 'ANON';
-        const text = `I charged ${result.distance.toLocaleString()}m as The Black Bull before ${cause}.
+        const handle = displayName;
+        const text = `I charged ${result.distance.toLocaleString()}m in Celo Rush before ${cause}.
 
 Rank: ${result.rank}.
 
-Dodge jeets. Survive snipers. Avoid MEV.
-Can you survive the trenches?
+Can you survive the Celo neon city?
 
-#BullRush $ANSEM`;
+#CeloRush`;
         const link = shareLink({ distance: result.distance, rank: result.rank, name: handle });
         const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}${link ? `&url=${encodeURIComponent(link)}` : ''}`;
         window.open(url, '_blank', 'noopener,noreferrer');
@@ -67,10 +70,8 @@ Can you survive the trenches?
 
     useEffect(() => {
         if (!result || localId.current) return;
-        // local save immediately (local board always records the run)
-        const e = storage.add({ name: name || 'ANON', distance: result.distance, score: result.score, rank: result.rank, at: Date.now() });
+        const e = storage.add({ name: displayName, distance: result.distance, score: result.score, rank: result.rank, at: Date.now() });
         localId.current = e.id;
-        // if the player just sits there, still post to the global board after a grace period
         const t = window.setTimeout(commit, 8000);
         return () => clearTimeout(t);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -98,27 +99,36 @@ Can you survive the trenches?
                 </div>
                 {globalPos && <div className="globalrank">GLOBAL&nbsp;#{globalPos.toLocaleString()}</div>}
 
-                <div className="namebox">
-                    <label className="namelabel" htmlFor="bull-name">
-                        ▸ ENTER YOUR NAME FOR THE LEADERBOARD
-                    </label>
-                    <input
-                        id="bull-name"
-                        className="nameinput"
-                        value={name}
-                        onChange={(e) => onName(e.target.value)}
-                        placeholder="YOUR USERNAME"
-                        maxLength={16}
-                        autoComplete="off"
-                        spellCheck={false}
-                    />
-                </div>
+                {walletAddress ? (
+                    <div className="namebox">
+                        <label className="namelabel">WALLET</label>
+                        <div className="nameinput" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {displayName}
+                        </div>
+                    </div>
+                ) : (
+                    <div className="namebox">
+                        <label className="namelabel" htmlFor="bull-name">
+                            ENTER YOUR NAME FOR THE LEADERBOARD
+                        </label>
+                        <input
+                            id="bull-name"
+                            className="nameinput"
+                            value={name}
+                            onChange={(e) => onName(e.target.value)}
+                            placeholder="YOUR USERNAME"
+                            maxLength={16}
+                            autoComplete="off"
+                            spellCheck={false}
+                        />
+                    </div>
+                )}
 
                 <button className="btn primary" onClick={act(start)}>
-                    RUN IT BACK ▸
+                    RUN IT BACK
                 </button>
                 <button className="btn share" onClick={act(share)}>
-                    SHARE TO X 𝕏
+                    SHARE TO X
                 </button>
                 <div className="row2">
                     <button className="btn ghost" onClick={act(openBoard)}>

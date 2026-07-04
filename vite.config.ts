@@ -17,6 +17,9 @@ export default defineConfig({
             '@react-three/fiber',
             '@react-three/drei',
             '@react-three/postprocessing',
+            'wagmi',
+            'viem',
+            '@tanstack/react-query',
         ],
     },
     preview: {
@@ -30,6 +33,7 @@ export default defineConfig({
                 manualChunks: {
                     three: ['three'],
                     r3f: ['@react-three/fiber', '@react-three/drei', '@react-three/postprocessing'],
+                    wagmi: ['wagmi', 'viem'],
                 },
             },
         },

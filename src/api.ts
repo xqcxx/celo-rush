@@ -53,7 +53,10 @@ export async function submitRun(p: SubmitPayload): Promise<{ rank: string; posit
         const r = await fetch(`${BASE}/api/run/submit`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(p),
+            body: JSON.stringify({
+                ...p,
+                wallet: p.wallet || undefined,
+            }),
         });
         if (!r.ok) return null;
         return (await r.json()) as { rank: string; position: number | null };

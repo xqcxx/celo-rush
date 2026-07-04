@@ -100,6 +100,7 @@ interface GameState {
     cloudKey: number;
     muted: boolean;
     musicMode: number;
+    walletAddress: string | null;
 
     finishIntro: () => void;
     triggerCloud: () => void;
@@ -118,6 +119,7 @@ interface GameState {
     toggleMute: () => void;
     damage: (amount: number, cause: string) => void;
     die: (cause: string) => void;
+    setWalletAddress: (addr: string | null) => void;
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -134,6 +136,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     cloudKey: 0,
     muted: false,
     musicMode: storage.musicMode(),
+    walletAddress: null,
 
     finishIntro: () => {
         storage.setIntroSeen();
@@ -181,4 +184,5 @@ export const useGameStore = create<GameState>((set, get) => ({
             result: { distance, score: Math.floor(get().score), cause, rank: rankFor(distance), durationMs: Math.floor(refs.elapsed * 1000) },
         });
     },
+    setWalletAddress: (addr) => set({ walletAddress: addr }),
 }));
