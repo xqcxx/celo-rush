@@ -1,5 +1,23 @@
 import { useEffect, useState } from 'react';
+import { useWaitForTransactionReceipt, useWriteContract } from 'wagmi';
 import { useGameStore } from '../store';
+import { getChainId } from '../wallet/provider';
+import { rush, useRushApproval } from '../onchain/useRushApproval';
+
+const SEASON_MANAGER_ABI = [
+    {
+        type: 'function',
+        name: 'vote',
+        inputs: [
+            { name: 'proposalId', type: 'uint256' },
+            { name: 'optionId', type: 'uint256' },
+        ],
+        outputs: [],
+        stateMutability: 'nonpayable',
+    },
+] as const;
+
+const SEASON_MANAGER_ADDRESS = (import.meta.env.VITE_SEASON_MANAGER_CONTRACT_ADDRESS || '0x0000000000000000000000000000000000000000') as `0x${string}`;
 
 interface Proposal {
     id: number;
@@ -15,7 +33,12 @@ export function VotingPanel() {
     const isRegistered = useGameStore((s) => s.isRegistered);
     const [proposals, setProposals] = useState<Proposal[]>([]);
     const [votedMap, setVotedMap] = useState<Record<number, number>>({});
+    const [pendingVote, setPendingVote] = useState<{ proposalId: number; optionId: number } | null>(null);
     const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || '';
+    const chainId = getChainId();
+    const { writeContract, data: txHash, isPending } = useWriteContract();
+    const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
+    const approval = useRushApproval(walletAddress, SEASON_MANAGER_ADDRESS, rush(10_000));
 
     useEffect(() => {
         if (!BASE || !walletAddress) return;
@@ -35,14 +58,15 @@ export function VotingPanel() {
         })();
     }, [BASE, walletAddress]);
 
-    const vote = async (proposalId: number, optionId: number) => {
-        if (!BASE || !walletAddress) return;
-        const r = await fetch(`${BASE}/api/proposals/vote`, {
+    useEffect(() => {
+        if (!isSuccess || !BASE || !walletAddress || !pendingVote) return;
+        const { proposalId, optionId } = pendingVote;
+        fetch(`${BASE}/api/proposals/vote`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ wallet: walletAddress, proposalId, optionId }),
-        });
-        if (r.ok) {
+        }).then((r) => {
+            if (!r.ok) return;
             setVotedMap((m) => ({ ...m, [proposalId]: optionId }));
             setProposals((ps) => ps.map((p) => {
                 if (p.id === proposalId) {
@@ -52,7 +76,23 @@ export function VotingPanel() {
                 }
                 return p;
             }));
+        }).catch(() => {});
+    }, [isSuccess, BASE, walletAddress, pendingVote]);
+
+    const vote = async (proposalId: number, optionId: number) => {
+        if (!walletAddress) return;
+        setPendingVote({ proposalId, optionId });
+        if (!approval.hasAllowance) {
+            approval.approve();
+            return;
         }
+        writeContract({
+            address: SEASON_MANAGER_ADDRESS,
+            abi: SEASON_MANAGER_ABI,
+            functionName: 'vote',
+            args: [BigInt(proposalId), BigInt(optionId)],
+            chainId,
+        });
     };
 
     if (!walletAddress || !isRegistered || proposals.length === 0) return null;
@@ -75,10 +115,10 @@ export function VotingPanel() {
                                     key={i}
                                     className={`vote-opt ${isMyVote ? 'voted' : ''}`}
                                     onClick={() => !hasVoted && vote(p.id, i)}
-                                    disabled={hasVoted}
+                                    disabled={hasVoted || isPending || isConfirming || approval.isPending || approval.isConfirming}
                                 >
                                     <span>{opt}</span>
-                                    <span className="vote-pct">{pct}%</span>
+                                    <span className="vote-pct">{pendingVote?.proposalId === p.id && pendingVote.optionId === i && (isPending || isConfirming || approval.isPending || approval.isConfirming) ? '...' : `${pct}%`}</span>
                                 </button>
                             );
                         })}

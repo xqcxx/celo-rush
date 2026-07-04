@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react';
+import { useWaitForTransactionReceipt, useWriteContract } from 'wagmi';
 import { useGameStore } from '../store';
+import { getChainId } from '../wallet/provider';
+import { rush, useRushApproval } from '../onchain/useRushApproval';
+
+const SEASON_MANAGER_ABI = [
+    { type: 'function', name: 'enterSeason', inputs: [{ name: 'seasonId', type: 'uint256' }], outputs: [], stateMutability: 'nonpayable' },
+] as const;
+
+const SEASON_MANAGER_ADDRESS = (import.meta.env.VITE_SEASON_MANAGER_CONTRACT_ADDRESS || '0x0000000000000000000000000000000000000000') as `0x${string}`;
 
 interface SeasonData {
     id: number;
@@ -14,6 +23,10 @@ export function SeasonPanel() {
     const [season, setSeason] = useState<SeasonData | null>(null);
     const [entered, setEntered] = useState(false);
     const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || '';
+    const chainId = getChainId();
+    const { writeContract, data: txHash, isPending } = useWriteContract();
+    const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
+    const approval = useRushApproval(walletAddress, SEASON_MANAGER_ADDRESS, rush(10_000));
 
     useEffect(() => {
         if (!BASE || !walletAddress) return;
@@ -33,14 +46,28 @@ export function SeasonPanel() {
         })();
     }, [BASE, walletAddress]);
 
-    const enter = async () => {
-        if (!BASE || !walletAddress || !season) return;
-        const r = await fetch(`${BASE}/api/seasons/enter`, {
+    useEffect(() => {
+        if (!isSuccess || !BASE || !walletAddress || !season) return;
+        fetch(`${BASE}/api/seasons/enter`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ wallet: walletAddress, seasonId: season.id }),
+        }).then((r) => { if (r.ok) setEntered(true); }).catch(() => {});
+    }, [isSuccess, BASE, walletAddress, season]);
+
+    const enter = async () => {
+        if (!walletAddress || !season) return;
+        if (!approval.hasAllowance) {
+            approval.approve();
+            return;
+        }
+        writeContract({
+            address: SEASON_MANAGER_ADDRESS,
+            abi: SEASON_MANAGER_ABI,
+            functionName: 'enterSeason',
+            args: [BigInt(season.id)],
+            chainId,
         });
-        if (r.ok) setEntered(true);
     };
 
     if (!walletAddress || !isRegistered || !season) return null;
@@ -58,7 +85,7 @@ export function SeasonPanel() {
                 </div>
             ) : (
                 <button className="btn primary" onClick={enter} style={{ fontSize: '14px', padding: '12px' }}>
-                    ENTER SEASON · 10 RUSH
+                    {approval.isPending || approval.isConfirming ? 'APPROVING...' : isPending ? 'SIGNING...' : isConfirming ? 'ENTERING...' : approval.hasAllowance ? 'ENTER SEASON · 10 RUSH' : 'APPROVE RUSH'}
                 </button>
             )}
         </div>
