@@ -32,6 +32,12 @@ export async function initSchema(): Promise<void> {
             created_at  timestamptz DEFAULT now()
         )
     `;
+    await sql`
+        CREATE TABLE IF NOT EXISTS players (
+            wallet      text PRIMARY KEY,
+            registered_at timestamptz DEFAULT now()
+        )
+    `;
     await sql`CREATE INDEX IF NOT EXISTS runs_distance_idx ON runs (distance DESC)`;
     await sql`CREATE INDEX IF NOT EXISTS runs_created_idx ON runs (created_at DESC)`;
 }

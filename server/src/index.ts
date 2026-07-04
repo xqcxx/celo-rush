@@ -40,6 +40,33 @@ const ipOf = (c: { req: { header: (k: string) => string | undefined } }) =>
 app.get('/', (c) => c.text('BULL RUSH API — charge.'));
 app.get('/health', (c) => c.json({ ok: true }));
 
+const walletRegex = /^0x[a-fA-F0-9]{40}$/;
+
+app.get('/api/players/:wallet', async (c) => {
+    const wallet = c.req.param('wallet').toLowerCase();
+    if (!walletRegex.test(wallet)) return c.json({ error: 'invalid_wallet' }, 400);
+
+    const rows = await sql`SELECT wallet, registered_at FROM players WHERE wallet = ${wallet}`;
+    if (rows.length === 0) return c.json({ registered: false });
+
+    return c.json({ registered: true, wallet: rows[0].wallet, registeredAt: rows[0].registered_at });
+});
+
+app.post('/api/players/register', async (c) => {
+    const ip = ipOf(c);
+    if (!(await rateLimit(ip, 'register', 10, 60))) return c.json({ error: 'rate_limited' }, 429);
+
+    const body = await c.req.json().catch(() => null);
+    const wallet = (body?.wallet || '').toLowerCase();
+    if (!walletRegex.test(wallet)) return c.json({ error: 'invalid_wallet' }, 400);
+
+    const existing = await sql`SELECT wallet FROM players WHERE wallet = ${wallet}`;
+    if (existing.length > 0) return c.json({ registered: true, wallet });
+
+    await sql`INSERT INTO players (wallet) VALUES (${wallet})`;
+    return c.json({ registered: true, wallet });
+});
+
 app.post('/api/run/start', async (c) => {
     const ip = ipOf(c);
     if (!(await rateLimit(ip, 'start', 60, 60))) return c.json({ error: 'rate_limited' }, 429);
