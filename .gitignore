@@ -43,3 +43,6 @@ scratchpad/
 # Foundry build artifacts
 out/
 cache/
+
+# Local encrypted deployment keys
+.keys/
