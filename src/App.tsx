@@ -24,6 +24,8 @@ function AppInner() {
     const flashKey = useGameStore((s) => s.flashKey);
     const cloudKey = useGameStore((s) => s.cloudKey);
     const toggleMute = useGameStore((s) => s.toggleMute);
+    const walletAddress = useGameStore((s) => s.walletAddress);
+    const isRegistered = useGameStore((s) => s.isRegistered);
 
     useEffect(() => {
         storage.captureRef();
@@ -53,16 +55,16 @@ function AppInner() {
     }, [muted]);
 
     useEffect(() => {
-        if (phase === 'playing') {
+        if (phase === 'playing' && walletAddress && isRegistered) {
             Audio.unlock();
             Audio.cycleMusic();
-            void startRun().then(({ seed, token }) => {
+            void startRun(walletAddress).then(({ seed, token }) => {
                 refs.seed = seed;
                 refs.token = token;
             });
         }
         if (phase === 'dead') Audio.sfx('death');
-    }, [phase]);
+    }, [phase, walletAddress, isRegistered]);
 
     const onMute = () => {
         Audio.unlock();

@@ -38,7 +38,7 @@ export function RegisterGate() {
     return (
         <div className="register-box">
             <p className="register-prompt">SIGN TO CREATE YOUR PLAYER PROFILE</p>
-            <p className="register-note">A one-time signature. No gas fee required.</p>
+            <p className="register-note">A one-time on-chain transaction records your wallet as a player.</p>
             <button className="btn primary" onClick={register}>
                 REGISTER TO PLAY ▸
             </button>

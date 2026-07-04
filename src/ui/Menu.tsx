@@ -22,7 +22,12 @@ export function Menu() {
                 <img className="logo" src="/logo.png" alt="CELO RUSH" />
                 <p className="sub">Surf the Celo chain. Dodge rug pulls, scam bots &amp; gas spikes. Charge as far as you can.</p>
 
-                {walletAddress && !isRegistered ? (
+                {!walletAddress ? (
+                    <div className="register-box">
+                        <p className="register-prompt">CONNECT WALLET TO PLAY</p>
+                        <p className="register-note">Each wallet maps to one player profile.</p>
+                    </div>
+                ) : !isRegistered ? (
                     <RegisterGate />
                 ) : (
                     <button className="btn primary" onClick={begin}>

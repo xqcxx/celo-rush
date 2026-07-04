@@ -152,9 +152,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         else Audio.setMode(i);
         set({ musicMode: i });
     },
-    enterGate: () => set({ phase: 'gate' }),
+    enterGate: () => {
+        const s = get();
+        if (!s.walletAddress || !s.isRegistered) return;
+        set({ phase: 'gate' });
+    },
     openBoard: () => set({ phase: 'board' }),
     start: () => {
+        const state = get();
+        if (!state.walletAddress || !state.isRegistered) return;
         resetRefs();
         set((s) => ({ phase: 'playing', hearts: HEALTH_MAX, score: 0, dist: 0, dashPct: 1, shield: false, combo: 0, result: null, runId: s.runId + 1 }));
     },
