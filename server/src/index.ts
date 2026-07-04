@@ -31,12 +31,36 @@ const app = new Hono();
 const CHAIN_ID = Number(process.env.CELO_CHAIN_ID || 44787);
 const CELO_RPC_URL = process.env.CELO_RPC_URL || 'https://alfajores-forno.celo-testnet.org';
 const PLAYER_REGISTRY_ADDRESS = process.env.PLAYER_REGISTRY_CONTRACT_ADDRESS;
+const SEASON_MANAGER_ADDRESS = process.env.SEASON_MANAGER_CONTRACT_ADDRESS;
 
 const PLAYER_REGISTRY_ABI = [
     {
         type: 'function',
         name: 'isRegistered',
         inputs: [{ name: 'wallet', type: 'address' }],
+        outputs: [{ type: 'bool' }],
+        stateMutability: 'view',
+    },
+] as const;
+
+const SEASON_MANAGER_ABI = [
+    {
+        type: 'function',
+        name: 'hasEntered',
+        inputs: [
+            { name: 'seasonId', type: 'uint256' },
+            { name: 'player', type: 'address' },
+        ],
+        outputs: [{ type: 'bool' }],
+        stateMutability: 'view',
+    },
+    {
+        type: 'function',
+        name: 'hasVoted',
+        inputs: [
+            { name: 'proposalId', type: 'uint256' },
+            { name: 'voter', type: 'address' },
+        ],
         outputs: [{ type: 'bool' }],
         stateMutability: 'view',
     },
@@ -86,6 +110,26 @@ async function isPlayerRegistered(wallet: string): Promise<boolean> {
     }
 
     return onChain;
+}
+
+async function seasonEnteredOnChain(seasonId: number, wallet: string): Promise<boolean> {
+    if (!SEASON_MANAGER_ADDRESS || !isAddress(SEASON_MANAGER_ADDRESS)) return false;
+    return publicClient.readContract({
+        address: getAddress(SEASON_MANAGER_ADDRESS),
+        abi: SEASON_MANAGER_ABI,
+        functionName: 'hasEntered',
+        args: [BigInt(seasonId), getAddress(wallet)],
+    });
+}
+
+async function proposalVotedOnChain(proposalId: number, wallet: string): Promise<boolean> {
+    if (!SEASON_MANAGER_ADDRESS || !isAddress(SEASON_MANAGER_ADDRESS)) return false;
+    return publicClient.readContract({
+        address: getAddress(SEASON_MANAGER_ADDRESS),
+        abi: SEASON_MANAGER_ABI,
+        functionName: 'hasVoted',
+        args: [BigInt(proposalId), getAddress(wallet)],
+    });
 }
 
 app.get('/api/players/:wallet', async (c) => {
@@ -334,6 +378,8 @@ app.post('/api/seasons/enter', async (c) => {
     const existing = await sql`SELECT wallet FROM season_entries WHERE season_id = ${seasonId} AND wallet = ${wallet}`;
     if (existing.length > 0) return c.json({ entered: true, seasonId });
 
+    if (!(await seasonEnteredOnChain(seasonId, wallet))) return c.json({ error: 'not_entered_onchain' }, 400);
+
     await sql`INSERT INTO season_entries (season_id, wallet) VALUES (${seasonId}, ${wallet})`;
     return c.json({ entered: true, seasonId });
 });
@@ -371,6 +417,8 @@ app.post('/api/proposals/vote', async (c) => {
 
     const existing = await sql`SELECT wallet FROM votes WHERE proposal_id = ${proposalId} AND wallet = ${wallet}`;
     if (existing.length > 0) return c.json({ error: 'already_voted' }, 400);
+
+    if (!(await proposalVotedOnChain(proposalId, wallet))) return c.json({ error: 'not_voted_onchain' }, 400);
 
     await sql`INSERT INTO votes (proposal_id, wallet, option_id) VALUES (${proposalId}, ${wallet}, ${optionId})`;
     return c.json({ ok: true });

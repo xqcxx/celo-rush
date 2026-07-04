@@ -114,6 +114,10 @@ contract SeasonManager is Ownable {
         return seasons[seasonId].entered[player];
     }
 
+    function hasVoted(uint256 proposalId, address voter) external view returns (bool) {
+        return proposals[proposalId].hasVoted[voter];
+    }
+
     function claimSeasonBadge(
         uint256 seasonId,
         uint256 badgeId,
