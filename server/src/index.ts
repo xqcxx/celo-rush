@@ -292,10 +292,18 @@ app.post('/api/achievements/claim', async (c) => {
     const existing = await sql`SELECT badge_id FROM achievement_claims WHERE wallet = ${wallet} AND badge_id = ${badgeId}`;
     if (existing.length > 0) return c.json({ error: 'already_claimed' }, 400);
 
-    await sql`INSERT INTO achievement_claims (wallet, badge_id) VALUES (${wallet}, ${badgeId})`;
-
     const voucher = await signBadgeVoucher(badgeId, wallet);
     return c.json(voucher);
+});
+
+app.post('/api/achievements/sync', async (c) => {
+    const body = await c.req.json().catch(() => null);
+    const wallet = normalizeWallet(body?.wallet);
+    const badgeId = Number(body?.badgeId || 0);
+    if (!wallet || badgeId < 1) return c.json({ error: 'bad_request' }, 400);
+
+    await sql`INSERT INTO achievement_claims (wallet, badge_id) VALUES (${wallet}, ${badgeId}) ON CONFLICT (wallet, badge_id) DO NOTHING`;
+    return c.json({ ok: true });
 });
 
 app.get('/api/seasons/current', async (c) => {

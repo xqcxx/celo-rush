@@ -38,6 +38,7 @@ export function useAchievements(walletAddress: string | null) {
     const chainId = getChainId();
     const { writeContract, data: txHash, isPending } = useWriteContract();
     const { isLoading: isConfirming, isSuccess, isError } = useWaitForTransactionReceipt({ hash: txHash });
+    const [pendingBadgeId, setPendingBadgeId] = useState<number | null>(null);
 
     const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || '';
 
@@ -61,6 +62,17 @@ export function useAchievements(walletAddress: string | null) {
 
     useEffect(() => { fetchAchievements(); }, [fetchAchievements]);
 
+    useEffect(() => {
+        if (!isSuccess || !BASE || !walletAddress || pendingBadgeId === null) return;
+        fetch(`${BASE}/api/achievements/sync`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ wallet: walletAddress, badgeId: pendingBadgeId }),
+        })
+            .then(() => fetchAchievements())
+            .catch(() => {});
+    }, [isSuccess, BASE, walletAddress, pendingBadgeId, fetchAchievements]);
+
     const claimBadge = useCallback(async (badgeId: number) => {
         if (!BASE || !walletAddress) return;
         const r = await fetch(`${BASE}/api/achievements/claim`, {
@@ -70,6 +82,7 @@ export function useAchievements(walletAddress: string | null) {
         });
         if (!r.ok) return;
         const voucher = await r.json() as BadgeVoucher;
+        setPendingBadgeId(badgeId);
         writeContract({
             address: ARCADE_ITEMS_ADDRESS,
             abi: ARCADE_ITEMS_ABI,
