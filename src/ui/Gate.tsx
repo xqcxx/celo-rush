@@ -8,8 +8,9 @@ import { RankedModeSelector } from './RankedModeSelector';
 export function Gate() {
     const start = useGameStore((s) => s.start);
     const gameMode = useGameStore((s) => s.gameMode);
+    const walletAddress = useGameStore((s) => s.walletAddress);
     const setGameRunId = useGameStore((s) => s.setGameRunId);
-    const { startRankedRun, isPending, isConfirming, runId } = useRankedRun();
+    const { startRankedRun, isPending, isConfirming, runId, isApproving, needsApproval } = useRankedRun(walletAddress);
     const [idx, setIdx] = useState(0);
     const [wrong, setWrong] = useState<number | null>(null);
     const [charging, setCharging] = useState(false);
@@ -26,8 +27,8 @@ export function Gate() {
                 setWrong(null);
             } else {
                 if (gameMode === 'ranked') {
-                    setAwaitingRanked(true);
                     startRankedRun();
+                    if (!needsApproval) setAwaitingRanked(true);
                 } else {
                     setCharging(true);
                     Audio.sfx('charge');
@@ -53,7 +54,15 @@ export function Gate() {
     if (charging) {
         return (
             <div className="overlay charging">
-                <div className="charge-word">{(awaitingRanked || isPending || isConfirming) ? 'CONFIRM IN WALLET...' : 'CHARGE.'}</div>
+                <div className="charge-word">{isApproving ? 'APPROVING RUSH...' : (awaitingRanked || isPending || isConfirming) ? (needsApproval ? 'APPROVE RUSH...' : 'CONFIRM IN WALLET...') : 'CHARGE.'}</div>
+            </div>
+        );
+    }
+
+    if (isApproving) {
+        return (
+            <div className="overlay charging">
+                <div className="charge-word">APPROVING RUSH...</div>
             </div>
         );
     }
