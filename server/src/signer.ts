@@ -31,6 +31,18 @@ const TYPES = {
         { name: 'rewardAmount', type: 'uint256' },
         { name: 'deadline', type: 'uint256' },
     ],
+    BadgeClaim: [
+        { name: 'player', type: 'address' },
+        { name: 'badgeId', type: 'uint256' },
+        { name: 'deadline', type: 'uint256' },
+    ],
+} as const;
+
+const BADGE_DOMAIN = {
+    name: 'Celo Rush ArcadeItems',
+    version: '1',
+    chainId: Number(process.env.CELO_CHAIN_ID || 44787),
+    verifyingContract: (process.env.ARCADE_ITEMS_CONTRACT_ADDRESS || '0x0000000000000000000000000000000000000000') as `0x${string}`,
 } as const;
 
 const DOMAIN = {
@@ -45,6 +57,13 @@ export interface RewardVoucher {
     player: string;
     score: number;
     rewardAmount: number;
+    deadline: number;
+    signature: string;
+}
+
+export interface BadgeVoucher {
+    player: string;
+    badgeId: number;
     deadline: number;
     signature: string;
 }
@@ -85,6 +104,29 @@ export async function signVoucher(params: SignParams): Promise<RewardVoucher> {
         score: params.score,
         rewardAmount: params.rewardAmount,
         deadline,
+        signature,
+    };
+}
+
+export async function signBadgeVoucher(badgeId: number, player: string, deadline?: number): Promise<BadgeVoucher> {
+    const account = getAccount();
+    const dl = deadline || Math.floor(Date.now() / 1000) + 3600;
+
+    const signature = await account.signTypedData({
+        domain: BADGE_DOMAIN,
+        types: { BadgeClaim: TYPES.BadgeClaim },
+        primaryType: 'BadgeClaim',
+        message: {
+            player: player as `0x${string}`,
+            badgeId: BigInt(badgeId),
+            deadline: BigInt(dl),
+        },
+    });
+
+    return {
+        player,
+        badgeId,
+        deadline: dl,
         signature,
     };
 }

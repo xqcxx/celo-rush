@@ -12,7 +12,8 @@ import { celo, celoAlfajores } from 'viem/chains';
 import { sql, initSchema } from './db.ts';
 import { redis, LB, rateLimit, recordScore, topScores } from './redis.ts';
 import { rankFor } from './ranks.ts';
-import { computeReward, signVoucher, signerConfigured } from './signer.ts';
+import { computeReward, signVoucher, signBadgeVoucher, signerConfigured } from './signer.ts';
+import { getPlayerAchievements, isBadgeEligible, ACHIEVEMENTS } from './achievements.ts';
 
 // Must mirror the game's MAX_SPEED for the anti-cheat plausibility gate.
 const MAX_SPEED = 64;
@@ -235,6 +236,38 @@ app.post('/api/run/claim', async (c) => {
         rewardAmount,
     });
 
+    return c.json(voucher);
+});
+
+app.get('/api/achievements/:wallet', async (c) => {
+    const wallet = normalizeWallet(c.req.param('wallet'));
+    if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
+    const result = await getPlayerAchievements(wallet);
+    return c.json(result);
+});
+
+app.get('/api/achievements', (c) => {
+    return c.json(ACHIEVEMENTS);
+});
+
+app.post('/api/achievements/claim', async (c) => {
+    if (!signerConfigured()) return c.json({ error: 'signer_not_configured' }, 503);
+    const ip = ipOf(c);
+    if (!(await rateLimit(ip, 'badge', 10, 60))) return c.json({ error: 'rate_limited' }, 429);
+
+    const body = await c.req.json().catch(() => null);
+    const wallet = normalizeWallet(body?.wallet);
+    const badgeId = Number(body?.badgeId || 0);
+    if (!wallet || badgeId < 1) return c.json({ error: 'bad_request' }, 400);
+
+    if (!(await isBadgeEligible(wallet, badgeId))) return c.json({ error: 'not_eligible' }, 400);
+
+    const existing = await sql`SELECT badge_id FROM achievement_claims WHERE wallet = ${wallet} AND badge_id = ${badgeId}`;
+    if (existing.length > 0) return c.json({ error: 'already_claimed' }, 400);
+
+    await sql`INSERT INTO achievement_claims (wallet, badge_id) VALUES (${wallet}, ${badgeId})`;
+
+    const voucher = await signBadgeVoucher(badgeId, wallet);
     return c.json(voucher);
 });
 

@@ -39,5 +39,14 @@ export async function initSchema(): Promise<void> {
         )
     `;
     await sql`CREATE INDEX IF NOT EXISTS runs_distance_idx ON runs (distance DESC)`;
+    await sql`
+        CREATE TABLE IF NOT EXISTS achievement_claims (
+            wallet      text NOT NULL,
+            badge_id    integer NOT NULL,
+            claimed_at  timestamptz DEFAULT now(),
+            PRIMARY KEY (wallet, badge_id)
+        )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS runs_distance_idx ON runs (distance DESC)`;
     await sql`CREATE INDEX IF NOT EXISTS runs_created_idx ON runs (created_at DESC)`;
 }
