@@ -12,6 +12,7 @@ import { celo, celoAlfajores } from 'viem/chains';
 import { sql, initSchema } from './db.ts';
 import { redis, LB, rateLimit, recordScore, topScores } from './redis.ts';
 import { rankFor } from './ranks.ts';
+import { computeReward, signVoucher, signerConfigured } from './signer.ts';
 
 // Must mirror the game's MAX_SPEED for the anti-cheat plausibility gate.
 const MAX_SPEED = 64;
@@ -206,6 +207,35 @@ app.post('/api/run/submit', async (c) => {
     await recordScore(member, b.distance, b.ref);
     const position = await redis.zrevrank(LB.alltime, member);
     return c.json({ ok: true, rank, position: position === null ? null : position + 1 });
+});
+
+const ClaimVoucherSchema = z.object({
+    runId: z.string().min(8).max(64),
+    score: z.number().int().min(0).max(50_000_000),
+    wallet: z.string(),
+});
+
+app.post('/api/run/claim', async (c) => {
+    if (!signerConfigured()) return c.json({ error: 'signer_not_configured' }, 503);
+    const ip = ipOf(c);
+    if (!(await rateLimit(ip, 'claim', 15, 60))) return c.json({ error: 'rate_limited' }, 429);
+
+    const parsed = ClaimVoucherSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: 'bad_request' }, 400);
+    const b = parsed.data;
+    const wallet = normalizeWallet(b.wallet);
+    if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
+    if (!(await isPlayerRegistered(wallet))) return c.json({ error: 'player_not_registered' }, 403);
+
+    const rewardAmount = computeReward(b.score);
+    const voucher = await signVoucher({
+        runId: b.runId,
+        player: wallet,
+        score: b.score,
+        rewardAmount,
+    });
+
+    return c.json(voucher);
 });
 
 app.get('/api/leaderboard', async (c) => {

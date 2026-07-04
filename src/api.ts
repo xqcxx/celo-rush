@@ -98,6 +98,30 @@ export async function registerPlayer(wallet: string): Promise<boolean> {
     }
 }
 
+export interface RewardVoucher {
+    runId: string;
+    player: string;
+    score: number;
+    rewardAmount: number;
+    deadline: number;
+    signature: string;
+}
+
+export async function claimRunReward(runId: string, score: number, wallet: string): Promise<RewardVoucher | null> {
+    if (!BASE) return null;
+    try {
+        const r = await fetch(`${BASE}/api/run/claim`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ runId, score, wallet }),
+        });
+        if (!r.ok) return null;
+        return (await r.json()) as RewardVoucher;
+    } catch {
+        return null;
+    }
+}
+
 export async function getLeaderboard(
     period: 'alltime' | 'daily' | 'weekly' = 'alltime',
     squad?: string,
