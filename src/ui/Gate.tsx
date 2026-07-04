@@ -1,16 +1,22 @@
 import { useState } from 'react';
 import { useGameStore } from '../store';
+import { useRankedRun } from '../onchain/useRankedRun';
 import { QUESTIONS } from '../data/questions';
 import { Audio } from '../audio';
+import { RankedModeSelector } from './RankedModeSelector';
 
 export function Gate() {
     const start = useGameStore((s) => s.start);
+    const gameMode = useGameStore((s) => s.gameMode);
+    const setGameRunId = useGameStore((s) => s.setGameRunId);
+    const { startRankedRun, isPending, isConfirming, runId } = useRankedRun();
     const [idx, setIdx] = useState(0);
     const [wrong, setWrong] = useState<number | null>(null);
     const [charging, setCharging] = useState(false);
+    const [awaitingRanked, setAwaitingRanked] = useState(false);
 
     const answer = (i: number) => {
-        if (charging) return;
+        if (charging || awaitingRanked) return;
         Audio.unlock();
         const q = QUESTIONS[idx];
         if (i === q.correct) {
@@ -19,9 +25,14 @@ export function Gate() {
                 setIdx(idx + 1);
                 setWrong(null);
             } else {
-                setCharging(true);
-                Audio.sfx('charge');
-                window.setTimeout(() => start(), 1700);
+                if (gameMode === 'ranked') {
+                    setAwaitingRanked(true);
+                    startRankedRun();
+                } else {
+                    setCharging(true);
+                    Audio.sfx('charge');
+                    window.setTimeout(() => start(), 1700);
+                }
             }
         } else {
             Audio.sfx('quizWrong');
@@ -30,10 +41,19 @@ export function Gate() {
         }
     };
 
+    if (runId) {
+        setGameRunId(runId);
+        if (!charging) {
+            setCharging(true);
+            Audio.sfx('charge');
+            window.setTimeout(() => start(), 1700);
+        }
+    }
+
     if (charging) {
         return (
             <div className="overlay charging">
-                <div className="charge-word">CHARGE.</div>
+                <div className="charge-word">{(awaitingRanked || isPending || isConfirming) ? 'CONFIRM IN WALLET...' : 'CHARGE.'}</div>
             </div>
         );
     }
@@ -42,7 +62,8 @@ export function Gate() {
     return (
         <div className="overlay gate">
             <div className="panel">
-                <div className="kicker">PUMPFUN · THE GATEKEEPER</div>
+                <div className="kicker">CELO · THE GATEKEEPER</div>
+                <RankedModeSelector />
                 <div className={`gate-q ${wrong !== null ? 'shake' : ''}`}>“{q.prompt}”</div>
                 {wrong !== null && <div className="not-ready">YOU ARE NOT READY.</div>}
                 <div className="opts">

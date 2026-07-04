@@ -816,3 +816,34 @@ body,
     text-shadow: 0 0 8px rgba(255, 45, 58, 0.6);
     margin: 0;
 }
+
+.mode-selector {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+    margin-bottom: 4px;
+}
+.mode-btn {
+    flex: 1;
+    padding: 10px 8px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.04);
+    color: #8a93a6;
+    font-family: var(--font);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: transform 0.12s ease;
+}
+.mode-btn:hover {
+    border-color: rgba(255, 255, 255, 0.3);
+    transform: translateY(-1px);
+}
+.mode-btn.on {
+    border-color: var(--neon);
+    color: var(--neon);
+    background: rgba(57, 255, 20, 0.08);
+    text-shadow: 0 0 8px rgba(57, 255, 20, 0.5);
+}

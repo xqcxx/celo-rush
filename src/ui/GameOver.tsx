@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useGameStore, refs } from '../store';
 import { storage } from '../storage';
-import { submitRun, shareLink } from '../api';
+import { submitRun, shareLink, claimRunReward, type RewardVoucher } from '../api';
+import { useClaimReward } from '../onchain/useClaimReward';
 
 export function GameOverScreen() {
     const result = useGameStore((s) => s.result);
@@ -9,9 +10,16 @@ export function GameOverScreen() {
     const reset = useGameStore((s) => s.reset);
     const openBoard = useGameStore((s) => s.openBoard);
     const walletAddress = useGameStore((s) => s.walletAddress);
+    const gameMode = useGameStore((s) => s.gameMode);
+    const gameRunId = useGameStore((s) => s.gameRunId);
+    const setGameRunId = useGameStore((s) => s.setGameRunId);
+
+    const { claimReward, isPending: claimingTx, isConfirming: claimConfirming, isSuccess: claimSuccess, isError: claimError } = useClaimReward();
 
     const [name, setName] = useState(() => storage.name() || '');
     const [globalPos, setGlobalPos] = useState<number | null>(null);
+    const [voucher, setVoucher] = useState<RewardVoucher | null>(null);
+    const [claimStarted, setClaimStarted] = useState(false);
     const localId = useRef<string | null>(null);
     const submitted = useRef(false);
 
@@ -47,6 +55,16 @@ export function GameOverScreen() {
         }
     };
 
+    const handleClaim = async () => {
+        if (!result || !walletAddress || !gameRunId) return;
+        setClaimStarted(true);
+        const v = await claimRunReward(gameRunId, result.score, walletAddress);
+        if (v) {
+            setVoucher(v);
+            claimReward(v);
+        }
+    };
+
     const act = (fn: () => void) => () => {
         commit();
         fn();
@@ -68,6 +86,12 @@ Can you survive the Celo neon city?
         window.open(url, '_blank', 'noopener,noreferrer');
     };
 
+    const runItBack = () => {
+        commit();
+        setGameRunId(null);
+        start();
+    };
+
     useEffect(() => {
         if (!result || localId.current) return;
         const e = storage.add({ name: displayName, distance: result.distance, score: result.score, rank: result.rank, at: Date.now() });
@@ -79,12 +103,16 @@ Can you survive the Celo neon city?
 
     if (!result) return null;
 
+    const isRanked = gameMode === 'ranked';
+    const estimatedReward = isRanked ? Math.max(1, Math.floor(result.score / 10)) : 0;
+    const claimDone = claimSuccess;
+
     return (
         <div className="overlay dead">
             <div className="panel">
                 <div className="death">{result.cause}</div>
                 <div className="charged">
-                    <span>YOU CHARGED</span>
+                    <span>{isRanked ? 'RANKED RUN' : 'YOU CHARGED'}</span>
                     <strong>{result.distance.toLocaleString()} m</strong>
                 </div>
                 <div className="stats">
@@ -98,6 +126,17 @@ Can you survive the Celo neon city?
                     </div>
                 </div>
                 {globalPos && <div className="globalrank">GLOBAL&nbsp;#{globalPos.toLocaleString()}</div>}
+
+                {isRanked && !claimStarted && (
+                    <button className="btn primary" onClick={handleClaim}>
+                        CLAIM ~{estimatedReward} RUSH ▸
+                    </button>
+                )}
+
+                {claimingTx && <div className="register-status">CONFIRM IN WALLET...</div>}
+                {claimConfirming && <div className="register-status">CLAIMING REWARD...</div>}
+                {claimDone && <div className="globalrank" style={{ color: 'var(--neon)' }}>+{estimatedReward} RUSH CLAIMED!</div>}
+                {claimError && <div className="register-error">CLAIM FAILED</div>}
 
                 {walletAddress ? (
                     <div className="namebox">
@@ -124,7 +163,7 @@ Can you survive the Celo neon city?
                     </div>
                 )}
 
-                <button className="btn primary" onClick={act(start)}>
+                <button className="btn primary" onClick={runItBack}>
                     RUN IT BACK
                 </button>
                 <button className="btn share" onClick={act(share)}>
