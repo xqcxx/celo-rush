@@ -3,6 +3,7 @@ import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { SHOP_ITEMS } from '../api';
 import { getChainId } from '../wallet/provider';
 import { useGameStore } from '../store';
+import { rush, useRushApproval } from '../onchain/useRushApproval';
 
 const ARCADE_ITEMS_ABI = [
     {
@@ -23,9 +24,14 @@ export function ShopPanel() {
     const { writeContract, data: txHash, isPending } = useWriteContract();
     const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash: txHash });
     const [buyingId, setBuyingId] = useState<number | null>(null);
+    const approval = useRushApproval(walletAddress, ARCADE_ITEMS_ADDRESS, rush(10_000));
 
     const buy = (itemId: number) => {
         setBuyingId(itemId);
+        if (!approval.hasAllowance) {
+            approval.approve();
+            return;
+        }
         writeContract({
             address: ARCADE_ITEMS_ADDRESS,
             abi: ARCADE_ITEMS_ABI,
@@ -56,7 +62,11 @@ export function ShopPanel() {
                                 disabled={isPending && buyingId === item.id}
                                 style={{ width: 'auto', padding: '6px 14px', fontSize: '12px' }}
                             >
-                                {isPending && buyingId === item.id ? (isConfirming ? 'CONFIRMING...' : 'SIGNING...') : 'BUY'}
+                                {isPending && buyingId === item.id
+                                    ? (isConfirming ? 'CONFIRMING...' : 'SIGNING...')
+                                    : buyingId === item.id && !approval.hasAllowance
+                                        ? (approval.isPending || approval.isConfirming ? 'APPROVING...' : 'APPROVE')
+                                        : 'BUY'}
                             </button>
                         </div>
                     </div>

@@ -3,6 +3,7 @@ import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { useGameStore } from '../store';
 import { getChainId } from '../wallet/provider';
 import { SHOP_ITEMS } from '../api';
+import { rush, useRushApproval } from '../onchain/useRushApproval';
 
 const ARCADE_ITEMS_ABI = [
     {
@@ -27,11 +28,17 @@ export function CapsulePanel() {
     const [opening, setOpening] = useState(false);
     const [openedItem, setOpenedItem] = useState<string | null>(null);
     const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || '';
+    const approval = useRushApproval(walletAddress, ARCADE_ITEMS_ADDRESS, rush(10_000));
 
     const openCapsule = async () => {
         if (!BASE || !walletAddress) return;
         setOpening(true);
         setOpenedItem(null);
+        if (!approval.hasAllowance) {
+            approval.approve();
+            setOpening(false);
+            return;
+        }
         const r = await fetch(`${BASE}/api/capsules/open`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -78,7 +85,7 @@ export function CapsulePanel() {
                 disabled={opening}
                 style={{ fontSize: '14px', padding: '12px' }}
             >
-                {opening ? '...' : `OPEN CAPSULE · ${CAPSULE_COST} RUSH`}
+                {approval.isPending || approval.isConfirming ? 'APPROVING...' : opening ? '...' : approval.hasAllowance ? `OPEN CAPSULE · ${CAPSULE_COST} RUSH` : 'APPROVE RUSH'}
             </button>
         </div>
     );
