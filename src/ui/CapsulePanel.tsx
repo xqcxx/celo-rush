@@ -8,8 +8,14 @@ import { rush, useRushApproval } from '../onchain/useRushApproval';
 const ARCADE_ITEMS_ABI = [
     {
         type: 'function',
-        name: 'buyItem',
-        inputs: [{ name: 'itemId', type: 'uint256' }],
+        name: 'openCapsule',
+        inputs: [
+            { name: 'itemId', type: 'uint256' },
+            { name: 'price', type: 'uint256' },
+            { name: 'nonce', type: 'uint256' },
+            { name: 'deadline', type: 'uint256' },
+            { name: 'signature', type: 'bytes' },
+        ],
         outputs: [],
         stateMutability: 'nonpayable',
     },
@@ -18,6 +24,14 @@ const ARCADE_ITEMS_ABI = [
 export const ARCADE_ITEMS_ADDRESS = (import.meta.env.VITE_ARCADE_ITEMS_CONTRACT_ADDRESS || '0x0000000000000000000000000000000000000000') as `0x${string}`;
 
 const CAPSULE_COST = 25; // RUSH
+
+interface CapsuleVoucher {
+    itemId: number;
+    price: string;
+    nonce: number;
+    deadline: number;
+    signature: string;
+}
 
 export function CapsulePanel() {
     const walletAddress = useGameStore((s) => s.walletAddress);
@@ -45,16 +59,16 @@ export function CapsulePanel() {
             body: JSON.stringify({ wallet: walletAddress }),
         });
         if (!r.ok) { setOpening(false); return; }
-        const { itemId } = await r.json() as { itemId: number };
+        const voucher = await r.json() as CapsuleVoucher;
 
-        const item = SHOP_ITEMS.find((s) => s.id === itemId);
-        setOpenedItem(item?.name || `Item #${itemId}`);
+        const item = SHOP_ITEMS.find((s) => s.id === voucher.itemId);
+        setOpenedItem(item?.name || `Item #${voucher.itemId}`);
 
         writeContract({
             address: ARCADE_ITEMS_ADDRESS,
             abi: ARCADE_ITEMS_ABI,
-            functionName: 'buyItem',
-            args: [BigInt(itemId)],
+            functionName: 'openCapsule',
+            args: [BigInt(voucher.itemId), BigInt(voucher.price), BigInt(voucher.nonce), BigInt(voucher.deadline), voucher.signature as `0x${string}`],
             chainId,
         });
     };

@@ -42,6 +42,13 @@ const TYPES = {
         { name: 'badgeId', type: 'uint256' },
         { name: 'deadline', type: 'uint256' },
     ],
+    CapsuleOpen: [
+        { name: 'player', type: 'address' },
+        { name: 'itemId', type: 'uint256' },
+        { name: 'price', type: 'uint256' },
+        { name: 'nonce', type: 'uint256' },
+        { name: 'deadline', type: 'uint256' },
+    ],
 } as const;
 
 const BADGE_DOMAIN = {
@@ -70,6 +77,15 @@ export interface RewardVoucher {
 export interface BadgeVoucher {
     player: string;
     badgeId: number;
+    deadline: number;
+    signature: string;
+}
+
+export interface CapsuleVoucher {
+    player: string;
+    itemId: number;
+    price: string;
+    nonce: number;
     deadline: number;
     signature: string;
 }
@@ -151,6 +167,26 @@ export async function signBadgeVoucher(badgeId: number, player: string, deadline
         deadline: dl,
         signature,
     };
+}
+
+export async function signCapsuleVoucher(itemId: number, price: bigint, player: string, nonce: number, deadline?: number): Promise<CapsuleVoucher> {
+    const account = getAccount();
+    const dl = deadline || Math.floor(Date.now() / 1000) + 3600;
+
+    const signature = await account.signTypedData({
+        domain: BADGE_DOMAIN,
+        types: { CapsuleOpen: TYPES.CapsuleOpen },
+        primaryType: 'CapsuleOpen',
+        message: {
+            player: player as `0x${string}`,
+            itemId: BigInt(itemId),
+            price,
+            nonce: BigInt(nonce),
+            deadline: BigInt(dl),
+        },
+    });
+
+    return { player, itemId, price: price.toString(), nonce, deadline: dl, signature };
 }
 
 export async function signSeasonBadge(

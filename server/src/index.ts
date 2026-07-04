@@ -12,7 +12,7 @@ import { celo, celoAlfajores } from 'viem/chains';
 import { sql, initSchema } from './db.ts';
 import { redis, LB, rateLimit, recordScore, topScores } from './redis.ts';
 import { rankFor } from './ranks.ts';
-import { computeReward, signVoucher, signBadgeVoucher, signerConfigured } from './signer.ts';
+import { computeReward, signVoucher, signBadgeVoucher, signCapsuleVoucher, signerConfigured } from './signer.ts';
 import { getPlayerAchievements, isBadgeEligible, ACHIEVEMENTS } from './achievements.ts';
 
 // Must mirror the game's MAX_SPEED for the anti-cheat plausibility gate.
@@ -386,6 +386,7 @@ app.get('/api/proposals/:id/vote/:wallet', async (c) => {
 });
 
 app.post('/api/capsules/open', async (c) => {
+    if (!signerConfigured()) return c.json({ error: 'signer_not_configured' }, 503);
     const ip = ipOf(c);
     if (!(await rateLimit(ip, 'capsule', 10, 60))) return c.json({ error: 'rate_limited' }, 429);
 
@@ -396,8 +397,11 @@ app.post('/api/capsules/open', async (c) => {
 
     const capsuleItems = [9, 10, 11, 12, 13]; // seeded cosmetic item IDs
     const randomItem = capsuleItems[Math.floor(Math.random() * capsuleItems.length)];
+    const nonce = Math.floor(Math.random() * 1_000_000_000);
+    const price = 25n * 10n ** 18n;
+    const voucher = await signCapsuleVoucher(randomItem, price, wallet, nonce);
 
-    return c.json({ itemId: randomItem });
+    return c.json(voucher);
 });
 
 app.get('/api/players/:wallet/stats', async (c) => {

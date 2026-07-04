@@ -23,10 +23,14 @@ contract ArcadeItems is ERC1155, Ownable {
 
     mapping(uint256 => ItemDef) public items;
     mapping(bytes32 => bool) public usedBadgeVouchers;
+    mapping(bytes32 => bool) public usedCapsuleVouchers;
     mapping(address => mapping(uint256 => uint8)) public itemLevel;
 
     bytes32 private constant BADGE_CLAIM_TYPEHASH = keccak256(
         "BadgeClaim(address player,uint256 badgeId,uint256 deadline)"
+    );
+    bytes32 private constant CAPSULE_OPEN_TYPEHASH = keccak256(
+        "CapsuleOpen(address player,uint256 itemId,uint256 price,uint256 nonce,uint256 deadline)"
     );
     bytes32 private immutable DOMAIN_SEPARATOR;
 
@@ -34,11 +38,13 @@ contract ArcadeItems is ERC1155, Ownable {
     event ItemBought(address indexed player, uint256 indexed id);
     event ItemUpgraded(address indexed player, uint256 indexed id, uint8 level);
     event AchievementMinted(address indexed player, uint256 indexed badgeId);
+    event CapsuleOpened(address indexed player, uint256 indexed itemId, uint256 price, uint256 nonce);
 
     error SoldOut();
     error InsufficientRUSH();
     error InvalidBadgeVoucher();
     error AlreadyClaimedBadge();
+    error CapsuleVoucherUsed();
     error MaxLevelReached();
     error NotUpgradable();
 
@@ -135,6 +141,37 @@ contract ArcadeItems is ERC1155, Ownable {
         badge.minted++;
         _mint(msg.sender, badgeId, 1, "");
         emit AchievementMinted(msg.sender, badgeId);
+    }
+
+    function openCapsule(
+        uint256 itemId,
+        uint256 price,
+        uint256 nonce,
+        uint256 deadline,
+        bytes calldata signature
+    ) external {
+        ItemDef storage item = items[itemId];
+        require(item.id != 0, "item does not exist");
+        if (item.maxSupply > 0 && item.minted >= item.maxSupply) revert SoldOut();
+        if (block.timestamp > deadline) revert InvalidBadgeVoucher();
+
+        bytes32 voucherId = keccak256(abi.encodePacked(msg.sender, itemId, price, nonce));
+        if (usedCapsuleVouchers[voucherId]) revert CapsuleVoucherUsed();
+
+        bytes32 digest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                DOMAIN_SEPARATOR,
+                keccak256(abi.encode(CAPSULE_OPEN_TYPEHASH, msg.sender, itemId, price, nonce, deadline))
+            )
+        );
+        if (digest.recover(signature) != owner()) revert InvalidBadgeVoucher();
+
+        usedCapsuleVouchers[voucherId] = true;
+        rushToken.burnFrom(msg.sender, price);
+        item.minted++;
+        _mint(msg.sender, itemId, 1, "");
+        emit CapsuleOpened(msg.sender, itemId, price, nonce);
     }
 
     function _update(
