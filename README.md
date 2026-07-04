@@ -4,6 +4,8 @@ A fast, dramatic **3D neon endless runner** for The Black Bull ($ANSEM) and the 
 
 **Play:** [trybullrush.xyz](https://trybullrush.xyz)
 
+**Token CA (Solana):** `9LANU3GV8UjVg95zzbUQsz9bwsPxf232NmEAUm6upump` · [pump.fun](https://pump.fun/coin/9LANU3GV8UjVg95zzbUQsz9bwsPxf232NmEAUm6upump)
+
 ---
 
 ## Stack
