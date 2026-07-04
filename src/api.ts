@@ -65,6 +65,34 @@ export async function submitRun(p: SubmitPayload): Promise<{ rank: string; posit
     }
 }
 
+export async function checkPlayerRegistration(wallet: string): Promise<boolean> {
+    if (!BASE || !wallet) return false;
+    try {
+        const r = await fetch(`${BASE}/api/players/${wallet.toLowerCase()}`);
+        if (!r.ok) return false;
+        const d = (await r.json()) as { registered: boolean };
+        return d.registered === true;
+    } catch {
+        return false;
+    }
+}
+
+export async function registerPlayer(wallet: string): Promise<boolean> {
+    if (!BASE || !wallet) return false;
+    try {
+        const r = await fetch(`${BASE}/api/players/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ wallet: wallet.toLowerCase() }),
+        });
+        if (!r.ok) return false;
+        const d = (await r.json()) as { registered: boolean };
+        return d.registered === true;
+    } catch {
+        return false;
+    }
+}
+
 export async function getLeaderboard(
     period: 'alltime' | 'daily' | 'weekly' = 'alltime',
     squad?: string,

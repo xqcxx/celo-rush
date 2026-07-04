@@ -2,10 +2,13 @@ import { useGameStore } from '../store';
 import { Audio } from '../audio';
 import { ConnectButton } from '../wallet/ConnectButton';
 import { CheckInButton } from '../onchain/CheckInButton';
+import { RegisterGate } from './RegisterGate';
 
 export function Menu() {
     const enterGate = useGameStore((s) => s.enterGate);
     const openBoard = useGameStore((s) => s.openBoard);
+    const walletAddress = useGameStore((s) => s.walletAddress);
+    const isRegistered = useGameStore((s) => s.isRegistered);
     const begin = () => {
         Audio.unlock();
         enterGate();
@@ -18,11 +21,17 @@ export function Menu() {
                 <div className="kicker">THE CELO NEON CITY</div>
                 <img className="logo" src="/logo.png" alt="CELO RUSH" />
                 <p className="sub">Surf the Celo chain. Dodge rug pulls, scam bots &amp; gas spikes. Charge as far as you can.</p>
-                <button className="btn primary" onClick={begin}>
-                    ENTER THE GATE ▸
-                </button>
+
+                {walletAddress && !isRegistered ? (
+                    <RegisterGate />
+                ) : (
+                    <button className="btn primary" onClick={begin}>
+                        ENTER THE GATE ▸
+                    </button>
+                )}
+
                 <ConnectButton />
-                <CheckInButton />
+                {isRegistered && <CheckInButton />}
                 <button className="btn ghost" onClick={openBoard}>
                     LEADERBOARD
                 </button>

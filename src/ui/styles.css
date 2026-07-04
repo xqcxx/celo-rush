@@ -772,3 +772,47 @@ body,
     letter-spacing: 0.12em;
     text-shadow: 0 0 10px rgba(57, 255, 20, 0.5);
 }
+
+.register-box {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 16px;
+    border: 1px solid rgba(57, 255, 20, 0.3);
+    border-radius: 16px;
+    background: rgba(57, 255, 20, 0.05);
+    margin-top: 4px;
+}
+.register-prompt {
+    color: var(--neon);
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.1em;
+    text-shadow: 0 0 8px rgba(57, 255, 20, 0.5);
+    margin: 0;
+}
+.register-note {
+    color: #6b7688;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    margin: 0;
+}
+.register-status {
+    color: var(--cyan);
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.1em;
+    text-shadow: 0 0 8px rgba(57, 230, 255, 0.5);
+    margin: 0;
+    animation: namepulse 1.2s ease-in-out infinite;
+}
+.register-error {
+    color: var(--red);
+    font-weight: 800;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-shadow: 0 0 8px rgba(255, 45, 58, 0.6);
+    margin: 0;
+}

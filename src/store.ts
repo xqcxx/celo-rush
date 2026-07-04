@@ -101,6 +101,7 @@ interface GameState {
     muted: boolean;
     musicMode: number;
     walletAddress: string | null;
+    isRegistered: boolean;
 
     finishIntro: () => void;
     triggerCloud: () => void;
@@ -120,6 +121,7 @@ interface GameState {
     damage: (amount: number, cause: string) => void;
     die: (cause: string) => void;
     setWalletAddress: (addr: string | null) => void;
+    setRegistered: (v: boolean) => void;
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -137,6 +139,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     muted: false,
     musicMode: storage.musicMode(),
     walletAddress: null,
+    isRegistered: false,
 
     finishIntro: () => {
         storage.setIntroSeen();
@@ -185,4 +188,5 @@ export const useGameStore = create<GameState>((set, get) => ({
         });
     },
     setWalletAddress: (addr) => set({ walletAddress: addr }),
+    setRegistered: (v) => set({ isRegistered: v }),
 }));
