@@ -394,7 +394,7 @@ app.post('/api/capsules/open', async (c) => {
     if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
     if (!(await isPlayerRegistered(wallet))) return c.json({ error: 'player_not_registered' }, 403);
 
-    const capsuleItems = [10, 11, 12, 13, 14]; // cosmetic item IDs
+    const capsuleItems = [9, 10, 11, 12, 13]; // seeded cosmetic item IDs
     const randomItem = capsuleItems[Math.floor(Math.random() * capsuleItems.length)];
 
     return c.json({ itemId: randomItem });

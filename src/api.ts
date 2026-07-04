@@ -138,11 +138,11 @@ export interface ShopItem {
 }
 
 export const SHOP_ITEMS: ShopItem[] = [
-    { id: 10, name: 'Celo Green Runner', description: 'A sleek green runner skin', priceRush: 50, category: 'skin', maxLevel: 3 },
-    { id: 11, name: 'MiniPay Jacket', description: 'Fresh MiniPay-branded jacket', priceRush: 35, category: 'skin', maxLevel: 3 },
-    { id: 12, name: 'Gold Trail', description: 'Leave a trail of gold dust', priceRush: 40, category: 'trail', maxLevel: 3 },
-    { id: 13, name: 'Rugproof Armor', description: 'Treated with rug-proof coating', priceRush: 60, category: 'skin', maxLevel: 3 },
-    { id: 14, name: 'Stablecoin Magnet', description: 'Magnetic trail that attracts pickups', priceRush: 45, category: 'trail', maxLevel: 3 },
+    { id: 9, name: 'Celo Green Runner', description: 'A sleek green runner skin', priceRush: 50, category: 'skin', maxLevel: 3 },
+    { id: 10, name: 'MiniPay Jacket', description: 'Fresh MiniPay-branded jacket', priceRush: 35, category: 'skin', maxLevel: 3 },
+    { id: 11, name: 'Gold Trail', description: 'Leave a trail of gold dust', priceRush: 40, category: 'trail', maxLevel: 3 },
+    { id: 12, name: 'Rugproof Armor', description: 'Treated with rug-proof coating', priceRush: 60, category: 'skin', maxLevel: 3 },
+    { id: 13, name: 'Stablecoin Magnet', description: 'Magnetic trail that attracts pickups', priceRush: 45, category: 'trail', maxLevel: 3 },
 ];
 
 export async function getLeaderboard(
