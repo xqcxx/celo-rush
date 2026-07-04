@@ -350,6 +350,42 @@ app.get('/api/proposals/:id/vote/:wallet', async (c) => {
     return c.json({ voted: rows.length > 0, optionId: rows.length > 0 ? Number(rows[0].option_id) : null });
 });
 
+app.post('/api/capsules/open', async (c) => {
+    const ip = ipOf(c);
+    if (!(await rateLimit(ip, 'capsule', 10, 60))) return c.json({ error: 'rate_limited' }, 429);
+
+    const body = await c.req.json().catch(() => null);
+    const wallet = normalizeWallet(body?.wallet);
+    if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
+    if (!(await isPlayerRegistered(wallet))) return c.json({ error: 'player_not_registered' }, 403);
+
+    const capsuleItems = [10, 11, 12, 13, 14]; // cosmetic item IDs
+    const randomItem = capsuleItems[Math.floor(Math.random() * capsuleItems.length)];
+
+    return c.json({ itemId: randomItem });
+});
+
+app.get('/api/players/:wallet/stats', async (c) => {
+    const wallet = normalizeWallet(c.req.param('wallet'));
+    if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
+
+    const rows = await sql`
+        SELECT
+            COUNT(*) as total_runs,
+            COALESCE(MAX(distance), 0) as best_distance,
+            COALESCE(SUM(distance), 0) as lifetime_distance,
+            COALESCE(SUM(score), 0) as total_score,
+            COALESCE(MAX(score), 0) as best_score,
+            COALESCE(SUM(jeets_dodged), 0) as total_jeets_dodged,
+            COALESCE(SUM(snipers_survived), 0) as total_snipers_survived,
+            COALESCE(SUM(mev_avoided), 0) as total_mev_avoided,
+            COUNT(CASE WHEN suspicious = false THEN 1 END) as valid_runs
+        FROM runs WHERE wallet = ${wallet}
+    `;
+    const stats = rows[0] || { total_runs: 0, best_distance: 0, lifetime_distance: 0, total_score: 0, best_score: 0, total_jeets_dodged: 0, total_snipers_survived: 0, total_mev_avoided: 0, valid_runs: 0 };
+    return c.json(stats);
+});
+
 app.get('/api/leaderboard', async (c) => {
     const period = c.req.query('period') || 'alltime';
     const squad = c.req.query('squad');

@@ -7,6 +7,9 @@ import { AchievementsPanel } from './AchievementsPanel';
 import { ShopPanel } from './ShopPanel';
 import { SeasonPanel } from './SeasonPanel';
 import { VotingPanel } from './VotingPanel';
+import { CapsulePanel } from './CapsulePanel';
+import { UpgradePanel } from './UpgradePanel';
+import { ProfilePanel } from './ProfilePanel';
 
 export function Menu() {
     const enterGate = useGameStore((s) => s.enterGate);
@@ -49,7 +52,10 @@ export function Menu() {
                     <>
                         <SeasonPanel />
                         <AchievementsPanel />
+                        <ProfilePanel />
                         <ShopPanel />
+                        <CapsulePanel />
+                        <UpgradePanel />
                         <VotingPanel />
                     </>
                 )}

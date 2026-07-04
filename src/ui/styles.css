@@ -993,3 +993,68 @@ body,
     font-weight: 700;
     color: var(--cyan);
 }
+
+.capsule-panel {
+    width: 100%;
+}
+.capsule-result {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-radius: 12px;
+    background: rgba(255, 215, 63, 0.1);
+    border: 1px solid rgba(255, 215, 63, 0.3);
+    color: var(--gold);
+    font-weight: 800;
+    font-size: 14px;
+    letter-spacing: 0.06em;
+}
+.capsule-reveal {
+    font-size: 20px;
+    color: var(--gold);
+    text-shadow: 0 0 10px rgba(255, 215, 63, 0.7);
+}
+
+.upgrade-panel {
+    width: 100%;
+}
+
+.profile-panel {
+    width: 100%;
+}
+.profile-wallet {
+    font-size: 12px;
+    color: var(--cyan);
+    letter-spacing: 0.06em;
+    font-weight: 700;
+    text-shadow: 0 0 6px rgba(57, 230, 255, 0.4);
+}
+.profile-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+    margin-top: 4px;
+}
+.pstat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.pstat span {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--neon);
+    text-shadow: 0 0 6px rgba(57, 255, 20, 0.4);
+}
+.pstat small {
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    color: #8a93a6;
+    text-transform: uppercase;
+}
