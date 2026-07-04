@@ -26,6 +26,8 @@ function AppInner() {
     const toggleMute = useGameStore((s) => s.toggleMute);
     const walletAddress = useGameStore((s) => s.walletAddress);
     const isRegistered = useGameStore((s) => s.isRegistered);
+    const gameMode = useGameStore((s) => s.gameMode);
+    const gameRunId = useGameStore((s) => s.gameRunId);
 
     useEffect(() => {
         storage.captureRef();
@@ -58,13 +60,13 @@ function AppInner() {
         if (phase === 'playing' && walletAddress && isRegistered) {
             Audio.unlock();
             Audio.cycleMusic();
-            void startRun(walletAddress).then(({ seed, token }) => {
+            void startRun(walletAddress, gameMode, gameRunId).then(({ seed, token }) => {
                 refs.seed = seed;
                 refs.token = token;
             });
         }
         if (phase === 'dead') Audio.sfx('death');
-    }, [phase, walletAddress, isRegistered]);
+    }, [phase, walletAddress, isRegistered, gameMode, gameRunId]);
 
     const onMute = () => {
         Audio.unlock();

@@ -48,6 +48,8 @@ export function GameOverScreen() {
                 durationMs: result.durationMs,
                 deathCause: result.cause,
                 wallet: walletAddress || undefined,
+                gameMode,
+                runId: gameRunId,
                 ref: storage.ref() || undefined,
             }).then((res) => {
                 if (res && res.position) setGlobalPos(res.position);

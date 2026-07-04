@@ -12,7 +12,7 @@ import { celo, celoAlfajores } from 'viem/chains';
 import { sql, initSchema } from './db.ts';
 import { redis, LB, rateLimit, recordScore, topScores } from './redis.ts';
 import { rankFor } from './ranks.ts';
-import { computeReward, signVoucher, signBadgeVoucher, signSeasonBadge, signSeasonTrophy, signerConfigured } from './signer.ts';
+import { computeReward, signVoucher, signBadgeVoucher, signerConfigured } from './signer.ts';
 import { getPlayerAchievements, isBadgeEligible, ACHIEVEMENTS } from './achievements.ts';
 
 // Must mirror the game's MAX_SPEED for the anti-cheat plausibility gate.
@@ -120,6 +120,8 @@ app.post('/api/players/register', async (c) => {
 
 const StartRunSchema = z.object({
     wallet: z.string(),
+    gameMode: z.enum(['casual', 'ranked']).default('casual'),
+    runId: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
 });
 
 app.post('/api/run/start', async (c) => {
@@ -131,10 +133,16 @@ app.post('/api/run/start', async (c) => {
     const wallet = normalizeWallet(parsed.data.wallet);
     if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
     if (!(await isPlayerRegistered(wallet))) return c.json({ error: 'player_not_registered' }, 403);
+    if (parsed.data.gameMode === 'ranked' && !parsed.data.runId) return c.json({ error: 'run_id_required' }, 400);
 
     const token = randomUUID();
     const seed = randomBytes(16).toString('hex');
-    await redis.set(`seed:${token}`, JSON.stringify({ seed, t: Date.now(), ip, wallet }), 'EX', 180);
+    await redis.set(
+        `seed:${token}`,
+        JSON.stringify({ seed, t: Date.now(), ip, wallet, gameMode: parsed.data.gameMode, runId: parsed.data.runId ?? null }),
+        'EX',
+        180,
+    );
     return c.json({ seed, token });
 });
 
@@ -153,6 +161,8 @@ const SubmitSchema = z.object({
     mevAvoided: z.number().int().min(0).max(100_000).optional(),
     maxCombo: z.number().int().min(0).max(100_000).optional(),
     wallet: z.string(),
+    gameMode: z.enum(['casual', 'ranked']).default('casual'),
+    runId: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
     ref: z.string().regex(/^[A-Za-z0-9_-]{1,24}$/).optional(),
 });
 
@@ -170,8 +180,10 @@ app.post('/api/run/submit', async (c) => {
     // one-time token: must exist (issued by /run/start, not yet used)
     const stored = await redis.getdel(`seed:${b.token}`);
     if (!stored) return c.json({ error: 'invalid_token' }, 400);
-    const runMeta = JSON.parse(stored) as { wallet?: string };
+    const runMeta = JSON.parse(stored) as { wallet?: string; gameMode?: 'casual' | 'ranked'; runId?: string | null };
     if (runMeta.wallet !== wallet) return c.json({ error: 'wallet_token_mismatch' }, 400);
+    if (runMeta.gameMode !== b.gameMode) return c.json({ error: 'game_mode_mismatch' }, 400);
+    if (b.gameMode === 'ranked' && (!b.runId || runMeta.runId !== b.runId)) return c.json({ error: 'run_id_mismatch' }, 400);
 
     // anti-cheat plausibility gate
     const sec = b.durationMs / 1000;
@@ -198,6 +210,8 @@ app.post('/api/run/submit', async (c) => {
         max_combo: b.maxCombo ?? 0,
         duration_ms: b.durationMs,
         wallet,
+        run_id: b.runId ?? null,
+        game_mode: b.gameMode,
         referrer: b.ref ?? null,
         suspicious,
     })}`;
@@ -211,7 +225,7 @@ app.post('/api/run/submit', async (c) => {
 });
 
 const ClaimVoucherSchema = z.object({
-    runId: z.string().min(8).max(64),
+    runId: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
     score: z.number().int().min(0).max(50_000_000),
     wallet: z.string(),
 });
@@ -228,6 +242,17 @@ app.post('/api/run/claim', async (c) => {
     if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
     if (!(await isPlayerRegistered(wallet))) return c.json({ error: 'player_not_registered' }, 403);
 
+    const runs = await sql`
+        SELECT id, score, suspicious, reward_claimed FROM runs
+        WHERE wallet = ${wallet} AND run_id = ${b.runId} AND game_mode = 'ranked'
+        ORDER BY created_at DESC LIMIT 1
+    `;
+    if (runs.length === 0) return c.json({ error: 'ranked_run_not_found' }, 404);
+    const run = runs[0] as { id: string; score: number; suspicious: boolean; reward_claimed: boolean };
+    if (run.suspicious) return c.json({ error: 'suspicious_run' }, 400);
+    if (run.reward_claimed) return c.json({ error: 'already_claimed' }, 400);
+    if (Number(run.score) !== b.score) return c.json({ error: 'score_mismatch' }, 400);
+
     const rewardAmount = computeReward(b.score);
     const voucher = await signVoucher({
         runId: b.runId,
@@ -235,6 +260,8 @@ app.post('/api/run/claim', async (c) => {
         score: b.score,
         rewardAmount,
     });
+
+    await sql`UPDATE runs SET reward_claimed = true WHERE id = ${run.id}`;
 
     return c.json(voucher);
 });

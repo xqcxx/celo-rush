@@ -20,6 +20,8 @@ export interface SubmitPayload {
     durationMs: number;
     deathCause?: string;
     wallet?: string;
+    gameMode?: 'casual' | 'ranked';
+    runId?: string | null;
     ref?: string;
 }
 
@@ -35,14 +37,18 @@ export function shareLink(p: { distance: number; rank: string; name: string }): 
     return `${window.location.origin}/s?${q.toString()}`;
 }
 
-export async function startRun(wallet?: string | null): Promise<{ seed: string; token: string | null }> {
+export async function startRun(
+    wallet?: string | null,
+    gameMode: 'casual' | 'ranked' = 'casual',
+    runId?: string | null,
+): Promise<{ seed: string; token: string | null }> {
     if (!BASE) return { seed: localSeed(), token: null };
     if (!wallet) return { seed: localSeed(), token: null };
     try {
         const r = await fetch(`${BASE}/api/run/start`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ wallet }),
+            body: JSON.stringify({ wallet, gameMode, runId: runId || undefined }),
         });
         if (!r.ok) throw new Error('start failed');
         const d = (await r.json()) as { seed: string; token: string };

@@ -1,4 +1,3 @@
-import { keccak256, toHex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 
 const privateKey = process.env.SIGNER_PRIVATE_KEY;
@@ -97,7 +96,7 @@ export async function signVoucher(params: SignParams): Promise<RewardVoucher> {
         types: TYPES,
         primaryType: 'RunClaim',
         message: {
-            runId: keccak256(toHex(params.runId)),
+            runId: params.runId as `0x${string}`,
             player: params.player as `0x${string}`,
             score: BigInt(Math.floor(params.score)),
             rewardAmount: BigInt(Math.floor(params.rewardAmount)),

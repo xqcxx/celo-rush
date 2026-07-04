@@ -27,11 +27,17 @@ export async function initSchema(): Promise<void> {
             max_combo   integer DEFAULT 0,
             duration_ms integer DEFAULT 0,
             wallet      text,
+            run_id      text,
+            game_mode   text DEFAULT 'casual',
+            reward_claimed boolean DEFAULT false,
             referrer    text,
             suspicious  boolean DEFAULT false,
             created_at  timestamptz DEFAULT now()
         )
     `;
+    await sql`ALTER TABLE runs ADD COLUMN IF NOT EXISTS run_id text`;
+    await sql`ALTER TABLE runs ADD COLUMN IF NOT EXISTS game_mode text DEFAULT 'casual'`;
+    await sql`ALTER TABLE runs ADD COLUMN IF NOT EXISTS reward_claimed boolean DEFAULT false`;
     await sql`
         CREATE TABLE IF NOT EXISTS players (
             wallet      text PRIMARY KEY,
