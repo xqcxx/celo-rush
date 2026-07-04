@@ -85,8 +85,7 @@ contract ArcadeItems is ERC1155, Ownable {
             if (item.minted >= item.maxSupply) revert SoldOut();
         }
 
-        rushToken.transferFrom(msg.sender, address(this), item.price);
-        rushToken.burn(item.price);
+        rushToken.burnFrom(msg.sender, item.price);
 
         item.minted++;
         _mint(msg.sender, itemId, 1, "");
@@ -102,8 +101,7 @@ contract ArcadeItems is ERC1155, Ownable {
         if (currentLevel >= item.maxLevel) revert MaxLevelReached();
 
         uint256 upgradeCost = item.price * (currentLevel + 1);
-        rushToken.transferFrom(msg.sender, address(this), upgradeCost);
-        rushToken.burn(upgradeCost);
+        rushToken.burnFrom(msg.sender, upgradeCost);
 
         itemLevel[msg.sender][itemId] = currentLevel + 1;
         emit ItemUpgraded(msg.sender, itemId, currentLevel + 1);

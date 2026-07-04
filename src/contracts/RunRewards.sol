@@ -7,6 +7,7 @@ contract RunRewards {
     using ECDSA for bytes32;
 
     GameToken public token;
+    address public authorizedSigner;
 
     uint256 public constant FREE_TICKET_COOLDOWN = 1 days;
     uint256 public constant RANKED_ENTRY_COST = 5 * 1e18; // 5 RUSH per ranked entry
@@ -15,10 +16,13 @@ contract RunRewards {
     mapping(bytes32 => bool) public claimedRuns;
     mapping(address => uint256) public totalRankedRuns;
 
+    event AuthorizedSignerSet(address indexed signer);
     event RankedRunStarted(address indexed player, bytes32 indexed runId, bool freeTicket);
     event RunRewardClaimed(address indexed player, bytes32 indexed runId, uint256 score, uint256 rewardAmount);
 
-    error InsufficientRUSHBurn();
+    error AlreadyStarted();
+    error RunNotStarted();
+    error WrongPlayer();
     error AlreadyClaimed();
     error InvalidSignature();
     error SignatureExpired();
@@ -36,9 +40,11 @@ contract RunRewards {
     );
 
     bytes32 private immutable DOMAIN_SEPARATOR;
+    mapping(bytes32 => address) public runPlayer;
 
-    constructor(address _token) {
+    constructor(address _token, address _authorizedSigner) {
         token = GameToken(_token);
+        authorizedSigner = _authorizedSigner;
         DOMAIN_SEPARATOR = keccak256(
             abi.encode(
                 keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
@@ -50,22 +56,28 @@ contract RunRewards {
         );
     }
 
+    function setAuthorizedSigner(address signer) external {
+        require(msg.sender == token.owner(), "not token owner");
+        authorizedSigner = signer;
+        emit AuthorizedSignerSet(signer);
+    }
+
     function currentDay() public view returns (uint256) {
         return block.timestamp / 1 days;
     }
 
     function startRankedRun(bytes32 runId) external {
+        if (runPlayer[runId] != address(0)) revert AlreadyStarted();
         uint256 day = currentDay();
         bool freeTicket = lastFreeTicketDay[msg.sender] < day;
 
         if (!freeTicket) {
-            token.transferFrom(msg.sender, address(this), RANKED_ENTRY_COST);
-            // burn the entry fee
-            token.burn(RANKED_ENTRY_COST);
+            token.burnFrom(msg.sender, RANKED_ENTRY_COST);
         } else {
             lastFreeTicketDay[msg.sender] = day;
         }
 
+        runPlayer[runId] = msg.sender;
         totalRankedRuns[msg.sender]++;
         emit RankedRunStarted(msg.sender, runId, freeTicket);
     }
@@ -77,6 +89,9 @@ contract RunRewards {
         uint256 deadline,
         bytes calldata signature
     ) external {
+        address player = runPlayer[runId];
+        if (player == address(0)) revert RunNotStarted();
+        if (player != msg.sender) revert WrongPlayer();
         if (claimedRuns[runId]) revert AlreadyClaimed();
         if (block.timestamp > deadline) revert SignatureExpired();
 
@@ -98,7 +113,7 @@ contract RunRewards {
         );
 
         address signer = digest.recover(signature);
-        if (signer != token.owner()) revert InvalidSignature();
+        if (signer != authorizedSigner) revert InvalidSignature();
 
         claimedRuns[runId] = true;
         token.mint(msg.sender, rewardAmount);

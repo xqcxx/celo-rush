@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./GameToken.sol";
@@ -11,7 +10,7 @@ contract SeasonManager is Ownable {
 
     GameToken public rushToken;
     ERC1155 public arcadeItems;
-    ERC721 public trophies;
+    IERC721Mintable public trophies;
 
     uint256 public constant SEASON_ENTRY_COST = 10 * 1e18;
     uint256 public constant VOTE_COST = 1 * 1e18;
@@ -33,6 +32,7 @@ contract SeasonManager is Ownable {
         uint256 endTime;
         mapping(uint256 => uint256) votes; // optionId -> count
         mapping(address => uint256) voterChoice;
+        mapping(address => bool) hasVoted;
         uint256 totalVotes;
     }
 
@@ -76,7 +76,7 @@ contract SeasonManager is Ownable {
     ) Ownable(msg.sender) {
         rushToken = GameToken(_rush);
         arcadeItems = ERC1155(_arcadeItems);
-        trophies = ERC721(_trophies);
+        trophies = IERC721Mintable(_trophies);
         DOMAIN_SEPARATOR = keccak256(
             abi.encode(
                 keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
@@ -103,8 +103,7 @@ contract SeasonManager is Ownable {
         if (block.timestamp < s.startTime || block.timestamp > s.endTime) revert SeasonNotActive();
         if (s.entered[msg.sender]) revert AlreadyEntered();
 
-        rushToken.transferFrom(msg.sender, address(this), SEASON_ENTRY_COST);
-        rushToken.burn(SEASON_ENTRY_COST);
+        rushToken.burnFrom(msg.sender, SEASON_ENTRY_COST);
 
         s.entered[msg.sender] = true;
         s.entrantCount++;
@@ -197,13 +196,14 @@ contract SeasonManager is Ownable {
         Proposal storage p = proposals[proposalId];
         if (p.id == 0) revert();
         if (block.timestamp > p.endTime) revert ProposalEnded();
-        if (p.voterChoice[msg.sender] != 0) revert AlreadyVoted();
+        if (optionId >= p.options.length) revert();
+        if (p.hasVoted[msg.sender]) revert AlreadyVoted();
 
-        rushToken.transferFrom(msg.sender, address(this), VOTE_COST);
-        rushToken.burn(VOTE_COST);
+        rushToken.burnFrom(msg.sender, VOTE_COST);
 
         p.votes[optionId]++;
         p.voterChoice[msg.sender] = optionId;
+        p.hasVoted[msg.sender] = true;
         p.totalVotes++;
         emit VoteCast(proposalId, msg.sender, optionId);
     }

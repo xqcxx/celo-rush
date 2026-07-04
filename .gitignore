@@ -39,3 +39,7 @@ grokthesis.md
 
 # scratch
 scratchpad/
+
+# Foundry build artifacts
+out/
+cache/
