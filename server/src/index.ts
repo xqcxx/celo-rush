@@ -12,7 +12,7 @@ import { celo, celoAlfajores } from 'viem/chains';
 import { sql, initSchema } from './db.ts';
 import { redis, LB, rateLimit, recordScore, topScores } from './redis.ts';
 import { rankFor } from './ranks.ts';
-import { computeReward, signVoucher, signBadgeVoucher, signerConfigured } from './signer.ts';
+import { computeReward, signVoucher, signBadgeVoucher, signSeasonBadge, signSeasonTrophy, signerConfigured } from './signer.ts';
 import { getPlayerAchievements, isBadgeEligible, ACHIEVEMENTS } from './achievements.ts';
 
 // Must mirror the game's MAX_SPEED for the anti-cheat plausibility gate.
@@ -269,6 +269,85 @@ app.post('/api/achievements/claim', async (c) => {
 
     const voucher = await signBadgeVoucher(badgeId, wallet);
     return c.json(voucher);
+});
+
+app.get('/api/seasons/current', async (c) => {
+    const now = new Date().toISOString();
+    const rows = await sql`
+        SELECT id, start_time, end_time, finalized FROM seasons
+        WHERE start_time <= ${now} AND end_time >= ${now}
+        ORDER BY id DESC LIMIT 1
+    `;
+    if (rows.length === 0) return c.json({ season: null });
+    return c.json({ season: rows[0] });
+});
+
+app.get('/api/seasons/all', async (c) => {
+    const rows = await sql`SELECT id, start_time, end_time, finalized FROM seasons ORDER BY id DESC LIMIT 10`;
+    return c.json({ seasons: rows });
+});
+
+app.post('/api/seasons/enter', async (c) => {
+    const ip = ipOf(c);
+    if (!(await rateLimit(ip, 'season', 10, 60))) return c.json({ error: 'rate_limited' }, 429);
+
+    const body = await c.req.json().catch(() => null);
+    const wallet = normalizeWallet(body?.wallet);
+    const seasonId = Number(body?.seasonId || 0);
+    if (!wallet || seasonId < 1) return c.json({ error: 'bad_request' }, 400);
+
+    const existing = await sql`SELECT wallet FROM season_entries WHERE season_id = ${seasonId} AND wallet = ${wallet}`;
+    if (existing.length > 0) return c.json({ entered: true, seasonId });
+
+    await sql`INSERT INTO season_entries (season_id, wallet) VALUES (${seasonId}, ${wallet})`;
+    return c.json({ entered: true, seasonId });
+});
+
+app.get('/api/seasons/:seasonId/hasEntered/:wallet', async (c) => {
+    const wallet = normalizeWallet(c.req.param('wallet'));
+    const seasonId = Number(c.req.param('seasonId'));
+    if (!wallet || !seasonId) return c.json({ error: 'invalid' }, 400);
+
+    const rows = await sql`SELECT wallet FROM season_entries WHERE season_id = ${seasonId} AND wallet = ${wallet}`;
+    return c.json({ entered: rows.length > 0 });
+});
+
+app.get('/api/proposals/active', async (c) => {
+    const now = new Date().toISOString();
+    const rows = await sql`SELECT id, season_id, description, options, end_time FROM proposals WHERE end_time >= ${now} ORDER BY id DESC LIMIT 10`;
+    const result = await Promise.all(rows.map(async (p: any) => {
+        const votes = await sql`SELECT option_id, COUNT(*) as count FROM votes WHERE proposal_id = ${p.id} GROUP BY option_id`;
+        const voteCounts = new Array(p.options.length).fill(0);
+        for (const v of votes) voteCounts[Number(v.option_id)] = Number(v.count);
+        return { id: p.id, seasonId: p.season_id, description: p.description, options: p.options, voteCounts, endTime: p.end_time };
+    }));
+    return c.json(result);
+});
+
+app.post('/api/proposals/vote', async (c) => {
+    const ip = ipOf(c);
+    if (!(await rateLimit(ip, 'vote', 20, 60))) return c.json({ error: 'rate_limited' }, 429);
+
+    const body = await c.req.json().catch(() => null);
+    const wallet = normalizeWallet(body?.wallet);
+    const proposalId = Number(body?.proposalId || 0);
+    const optionId = Number(body?.optionId || -1);
+    if (!wallet || !proposalId || optionId < 0) return c.json({ error: 'bad_request' }, 400);
+
+    const existing = await sql`SELECT wallet FROM votes WHERE proposal_id = ${proposalId} AND wallet = ${wallet}`;
+    if (existing.length > 0) return c.json({ error: 'already_voted' }, 400);
+
+    await sql`INSERT INTO votes (proposal_id, wallet, option_id) VALUES (${proposalId}, ${wallet}, ${optionId})`;
+    return c.json({ ok: true });
+});
+
+app.get('/api/proposals/:id/vote/:wallet', async (c) => {
+    const wallet = normalizeWallet(c.req.param('wallet'));
+    const proposalId = Number(c.req.param('id'));
+    if (!wallet || !proposalId) return c.json({ error: 'invalid' }, 400);
+
+    const rows = await sql`SELECT option_id FROM votes WHERE proposal_id = ${proposalId} AND wallet = ${wallet}`;
+    return c.json({ voted: rows.length > 0, optionId: rows.length > 0 ? Number(rows[0].option_id) : null });
 });
 
 app.get('/api/leaderboard', async (c) => {

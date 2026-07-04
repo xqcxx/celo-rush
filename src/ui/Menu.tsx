@@ -5,6 +5,8 @@ import { CheckInButton } from '../onchain/CheckInButton';
 import { RegisterGate } from './RegisterGate';
 import { AchievementsPanel } from './AchievementsPanel';
 import { ShopPanel } from './ShopPanel';
+import { SeasonPanel } from './SeasonPanel';
+import { VotingPanel } from './VotingPanel';
 
 export function Menu() {
     const enterGate = useGameStore((s) => s.enterGate);
@@ -45,8 +47,10 @@ export function Menu() {
 
                 {isRegistered && (
                     <>
+                        <SeasonPanel />
                         <AchievementsPanel />
                         <ShopPanel />
+                        <VotingPanel />
                     </>
                 )}
 

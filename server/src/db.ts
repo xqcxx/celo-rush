@@ -48,5 +48,40 @@ export async function initSchema(): Promise<void> {
         )
     `;
     await sql`CREATE INDEX IF NOT EXISTS runs_distance_idx ON runs (distance DESC)`;
+    await sql`
+        CREATE TABLE IF NOT EXISTS seasons (
+            id          integer PRIMARY KEY,
+            start_time  timestamptz NOT NULL,
+            end_time    timestamptz NOT NULL,
+            finalized   boolean DEFAULT false
+        )
+    `;
+    await sql`
+        CREATE TABLE IF NOT EXISTS season_entries (
+            season_id   integer NOT NULL,
+            wallet      text NOT NULL,
+            entered_at  timestamptz DEFAULT now(),
+            PRIMARY KEY (season_id, wallet)
+        )
+    `;
+    await sql`
+        CREATE TABLE IF NOT EXISTS proposals (
+            id          integer PRIMARY KEY,
+            season_id   integer NOT NULL,
+            description text NOT NULL,
+            options     text[] NOT NULL,
+            end_time    timestamptz NOT NULL
+        )
+    `;
+    await sql`
+        CREATE TABLE IF NOT EXISTS votes (
+            proposal_id integer NOT NULL,
+            wallet      text NOT NULL,
+            option_id   integer NOT NULL,
+            voted_at    timestamptz DEFAULT now(),
+            PRIMARY KEY (proposal_id, wallet)
+        )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS runs_distance_idx ON runs (distance DESC)`;
     await sql`CREATE INDEX IF NOT EXISTS runs_created_idx ON runs (created_at DESC)`;
 }

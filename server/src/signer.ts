@@ -19,6 +19,13 @@ export function signerAddress(): string {
     return _signerAddress!;
 }
 
+const SEASON_DOMAIN = {
+    name: 'Celo Rush SeasonManager',
+    version: '1',
+    chainId: Number(process.env.CELO_CHAIN_ID || 44787),
+    verifyingContract: (process.env.SEASON_MANAGER_CONTRACT_ADDRESS || '0x0000000000000000000000000000000000000000') as `0x${string}`,
+} as const;
+
 export function signerConfigured(): boolean {
     return !!privateKey;
 }
@@ -108,6 +115,22 @@ export async function signVoucher(params: SignParams): Promise<RewardVoucher> {
     };
 }
 
+export interface SeasonBadgeVoucher {
+    player: string;
+    seasonId: number;
+    badgeId: number;
+    rank: number;
+    deadline: number;
+    signature: string;
+}
+
+export interface SeasonTrophyVoucher {
+    player: string;
+    seasonId: number;
+    deadline: number;
+    signature: string;
+}
+
 export async function signBadgeVoucher(badgeId: number, player: string, deadline?: number): Promise<BadgeVoucher> {
     const account = getAccount();
     const dl = deadline || Math.floor(Date.now() / 1000) + 3600;
@@ -129,4 +152,66 @@ export async function signBadgeVoucher(badgeId: number, player: string, deadline
         deadline: dl,
         signature,
     };
+}
+
+export async function signSeasonBadge(
+    player: string,
+    seasonId: number,
+    badgeId: number,
+    rank: number,
+    deadline?: number,
+): Promise<SeasonBadgeVoucher> {
+    const account = getAccount();
+    const dl = deadline || Math.floor(Date.now() / 1000) + 3600;
+
+    const signature = await account.signTypedData({
+        domain: SEASON_DOMAIN,
+        types: {
+            SeasonBadge: [
+                { name: 'player', type: 'address' },
+                { name: 'seasonId', type: 'uint256' },
+                { name: 'badgeId', type: 'uint256' },
+                { name: 'rank', type: 'uint256' },
+                { name: 'deadline', type: 'uint256' },
+            ],
+        },
+        primaryType: 'SeasonBadge',
+        message: {
+            player: player as `0x${string}`,
+            seasonId: BigInt(seasonId),
+            badgeId: BigInt(badgeId),
+            rank: BigInt(rank),
+            deadline: BigInt(dl),
+        },
+    });
+
+    return { player, seasonId, badgeId, rank, deadline: dl, signature };
+}
+
+export async function signSeasonTrophy(
+    player: string,
+    seasonId: number,
+    deadline?: number,
+): Promise<SeasonTrophyVoucher> {
+    const account = getAccount();
+    const dl = deadline || Math.floor(Date.now() / 1000) + 3600;
+
+    const signature = await account.signTypedData({
+        domain: SEASON_DOMAIN,
+        types: {
+            SeasonTrophy: [
+                { name: 'player', type: 'address' },
+                { name: 'seasonId', type: 'uint256' },
+                { name: 'deadline', type: 'uint256' },
+            ],
+        },
+        primaryType: 'SeasonTrophy',
+        message: {
+            player: player as `0x${string}`,
+            seasonId: BigInt(seasonId),
+            deadline: BigInt(dl),
+        },
+    });
+
+    return { player, seasonId, deadline: dl, signature };
 }

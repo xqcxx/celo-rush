@@ -208,6 +208,8 @@ body,
     z-index: 1;
     width: 100%;
     max-width: 460px;
+    max-height: 100vh;
+    overflow-y: auto;
     padding: 0 24px 38px;
     display: flex;
     flex-direction: column;
@@ -934,3 +936,60 @@ body,
     margin-top: 6px;
 }
 .shop-item-price { font-size: 13px; font-weight: 700; color: var(--neon); }
+
+.season-panel {
+    width: 100%;
+}
+
+.voting-panel {
+    width: 100%;
+}
+.vote-card {
+    width: 100%;
+    padding: 10px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    margin-bottom: 8px;
+}
+.vote-desc {
+    font-size: 13px;
+    color: #eafff0;
+    display: block;
+    margin-bottom: 6px;
+}
+.vote-opts {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.vote-opt {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.03);
+    color: #9fb0c3;
+    font-family: var(--font);
+    font-size: 12px;
+    cursor: pointer;
+}
+.vote-opt:hover:not(:disabled) {
+    border-color: var(--neon);
+    background: rgba(57, 255, 20, 0.05);
+}
+.vote-opt.voted {
+    border-color: var(--neon);
+    color: var(--neon);
+    background: rgba(57, 255, 20, 0.1);
+}
+.vote-opt:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+.vote-pct {
+    font-weight: 700;
+    color: var(--cyan);
+}
