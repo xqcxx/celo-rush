@@ -7,7 +7,9 @@
   },
   "scripts": {
     "start": "node --env-file .env --import tsx/esm src/index.ts",
-    "dev": "node --env-file .env --import tsx/esm --watch src/index.ts",
+    "dev": "node --env-file .env scripts/dev-with-signer-key.mjs",
+    "dev:plain": "node --env-file .env --import tsx/esm --watch src/index.ts",
+    "signer:init": "node --env-file .env scripts/dev-with-signer-key.mjs --init-only",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
