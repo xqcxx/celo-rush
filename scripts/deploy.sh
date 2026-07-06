@@ -11,6 +11,9 @@ Options:
   --key-name <name>           Encrypted key filename stem. Default: deployer
   --base-uri <uri>            ArcadeItems metadata URI. Default depends on env.
   --signer <address>          Authorized backend signer address. Default: deployer address.
+  --rpc-url <url|alias>       Override RPC endpoint/alias for this run.
+  --gas-price <price>         Override gas price, e.g. 75gwei or 100gwei.
+  --resume                    Resume the latest failed broadcast for this script/network.
   --skip-verify               Deploy without explorer verification.
   -h, --help                  Show this help.
 
@@ -26,6 +29,9 @@ KEY_NAME="deployer"
 BASE_URI=""
 AUTHORIZED_SIGNER=""
 VERIFY=1
+RESUME=0
+RPC_OVERRIDE=""
+GAS_PRICE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -45,8 +51,20 @@ while [[ $# -gt 0 ]]; do
       AUTHORIZED_SIGNER="${2:-}"
       shift 2
       ;;
+    --rpc-url)
+      RPC_OVERRIDE="${2:-}"
+      shift 2
+      ;;
+    --gas-price)
+      GAS_PRICE="${2:-}"
+      shift 2
+      ;;
     --skip-verify)
       VERIFY=0
+      shift
+      ;;
+    --resume)
+      RESUME=1
       shift
       ;;
     -h|--help)
@@ -170,6 +188,10 @@ else
   DEFAULT_BASE_URI="https://api-testnet.celorush.xyz/metadata/{id}.json"
 fi
 
+if [[ -n "$RPC_OVERRIDE" ]]; then
+  RPC_ALIAS="$RPC_OVERRIDE"
+fi
+
 if [[ -z "$BASE_URI" ]]; then
   BASE_URI="$DEFAULT_BASE_URI"
 fi
@@ -203,10 +225,20 @@ FORGE_ARGS=(
   script/DeployAndSeed.s.sol:DeployAndSeed
   --rpc-url "$RPC_ALIAS"
   --broadcast
+  --slow
+  --batch-size 1
 )
 
+if [[ "$RESUME" -eq 1 ]]; then
+  FORGE_ARGS+=(--resume)
+fi
+
+if [[ -n "$GAS_PRICE" ]]; then
+  FORGE_ARGS+=(--legacy --with-gas-price "$GAS_PRICE")
+fi
+
 if [[ "$VERIFY" -eq 1 ]]; then
-  FORGE_ARGS+=(--verify --etherscan-api-key "$CELOSCAN_API_KEY" --watch)
+  FORGE_ARGS+=(--verify --etherscan-api-key "$CELOSCAN_API_KEY")
 fi
 
 forge script "${FORGE_ARGS[@]}"

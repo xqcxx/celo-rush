@@ -43,6 +43,10 @@ scratchpad/
 # Foundry build artifacts
 out/
 cache/
+broadcast/
 
 # Local encrypted deployment keys
 .keys/
+
+# Local automation scripts/configs (never publish private test runners)
+.local/
