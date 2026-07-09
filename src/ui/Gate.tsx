@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useGameStore } from '../store';
 import { useRankedRun } from '../onchain/useRankedRun';
 import { QUESTIONS } from '../data/questions';
@@ -10,7 +10,7 @@ export function Gate() {
     const gameMode = useGameStore((s) => s.gameMode);
     const walletAddress = useGameStore((s) => s.walletAddress);
     const setGameRunId = useGameStore((s) => s.setGameRunId);
-    const { startRankedRun, isPending, isConfirming, runId, isApproving, needsApproval } = useRankedRun(walletAddress);
+    const { startRankedRun, isPending, isConfirming, runId, isApproving, needsApproval, isPreparingRanked } = useRankedRun(walletAddress);
     const [idx, setIdx] = useState(0);
     const [wrong, setWrong] = useState<number | null>(null);
     const [charging, setCharging] = useState(false);
@@ -28,7 +28,7 @@ export function Gate() {
             } else {
                 if (gameMode === 'ranked') {
                     startRankedRun();
-                    if (!needsApproval) setAwaitingRanked(true);
+                    setAwaitingRanked(true);
                 } else {
                     setCharging(true);
                     Audio.sfx('charge');
@@ -42,27 +42,20 @@ export function Gate() {
         }
     };
 
-    if (runId) {
+    useEffect(() => {
+        if (!runId) return;
         setGameRunId(runId);
         if (!charging) {
             setCharging(true);
             Audio.sfx('charge');
             window.setTimeout(() => start(), 1700);
         }
-    }
+    }, [runId, charging, setGameRunId, start]);
 
-    if (charging) {
+    if (charging || awaitingRanked || isPending || isConfirming || isApproving || isPreparingRanked) {
         return (
             <div className="overlay charging">
-                <div className="charge-word">{isApproving ? 'APPROVING RUSH...' : (awaitingRanked || isPending || isConfirming) ? (needsApproval ? 'APPROVE RUSH...' : 'CONFIRM IN WALLET...') : 'CHARGE.'}</div>
-            </div>
-        );
-    }
-
-    if (isApproving) {
-        return (
-            <div className="overlay charging">
-                <div className="charge-word">APPROVING RUSH...</div>
+                <div className="charge-word">{isApproving ? 'APPROVING RUSH...' : isPreparingRanked ? 'STARTING RANKED RUN...' : (awaitingRanked || isPending || isConfirming) ? (needsApproval ? 'APPROVE RUSH...' : 'CONFIRM IN WALLET...') : 'CHARGE.'}</div>
             </div>
         );
     }

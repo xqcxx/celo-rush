@@ -1,6 +1,6 @@
 import { useReadContract, useWaitForTransactionReceipt, useWriteContract } from 'wagmi';
 import { parseUnits } from 'viem';
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { getChainId } from '../wallet/provider';
 
 const ERC20_ABI = [
@@ -56,6 +56,10 @@ export function useRushApproval(owner: string | null | undefined, spender: `0x${
             chainId,
         });
     }, [writeContract, spender, amount, chainId]);
+
+    useEffect(() => {
+        if (isSuccess) void refetch();
+    }, [isSuccess, refetch]);
 
     return { allowance, hasAllowance, approve, isPending, isConfirming, isSuccess, refetch };
 }

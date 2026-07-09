@@ -12,6 +12,13 @@ export interface LbEntry {
     rank: string;
 }
 
+export interface PlayerProfile {
+    registered: boolean;
+    wallet?: string;
+    name: string | null;
+    registeredAt?: string;
+}
+
 export interface SubmitPayload {
     token: string;
     name: string;
@@ -58,7 +65,13 @@ export async function startRun(
     }
 }
 
-export async function submitRun(p: SubmitPayload): Promise<{ rank: string; position: number | null } | null> {
+export interface SubmitResult {
+    rank: string;
+    position: number | null;
+    hidden?: boolean;
+}
+
+export async function submitRun(p: SubmitPayload): Promise<SubmitResult | null> {
     if (!BASE) return null;
     try {
         const r = await fetch(`${BASE}/api/run/submit`, {
@@ -69,23 +82,29 @@ export async function submitRun(p: SubmitPayload): Promise<{ rank: string; posit
                 wallet: p.wallet || undefined,
             }),
         });
+        const d = await r.json().catch(() => null) as { rank?: string; position?: number | null; hidden?: boolean; error?: string } | null;
+        if (!r.ok) throw new Error(d?.error || `submit_failed_${r.status}`);
+        return d as SubmitResult;
+    } catch (e) {
+        console.error('Run submit failed', e);
+        return null;
+    }
+}
+
+export async function getPlayerProfile(wallet: string): Promise<PlayerProfile | null> {
+    if (!BASE || !wallet) return null;
+    try {
+        const r = await fetch(`${BASE}/api/players/${wallet.toLowerCase()}`);
         if (!r.ok) return null;
-        return (await r.json()) as { rank: string; position: number | null };
+        return (await r.json()) as PlayerProfile;
     } catch {
         return null;
     }
 }
 
 export async function checkPlayerRegistration(wallet: string): Promise<boolean> {
-    if (!BASE || !wallet) return false;
-    try {
-        const r = await fetch(`${BASE}/api/players/${wallet.toLowerCase()}`);
-        if (!r.ok) return false;
-        const d = (await r.json()) as { registered: boolean };
-        return d.registered === true;
-    } catch {
-        return false;
-    }
+    const profile = await getPlayerProfile(wallet);
+    return profile?.registered === true;
 }
 
 export async function registerPlayer(wallet: string): Promise<boolean> {
@@ -104,28 +123,39 @@ export async function registerPlayer(wallet: string): Promise<boolean> {
     }
 }
 
+export async function setPlayerName(wallet: string, name: string): Promise<PlayerProfile> {
+    if (!BASE || !wallet) throw new Error('api_disabled');
+    const r = await fetch(`${BASE}/api/players/${wallet.toLowerCase()}/name`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+    });
+    const d = await r.json().catch(() => null) as (PlayerProfile & { error?: string }) | null;
+    if (!r.ok) throw new Error(d?.error || `name_failed_${r.status}`);
+    return d as PlayerProfile;
+}
+
 export interface RewardVoucher {
     runId: string;
     player: string;
     score: number;
-    rewardAmount: number;
+    rewardAmount: string;
     deadline: number;
     signature: string;
 }
 
 export async function claimRunReward(runId: string, score: number, wallet: string): Promise<RewardVoucher | null> {
     if (!BASE) return null;
-    try {
-        const r = await fetch(`${BASE}/api/run/claim`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ runId, score, wallet }),
-        });
-        if (!r.ok) return null;
-        return (await r.json()) as RewardVoucher;
-    } catch {
-        return null;
+    const r = await fetch(`${BASE}/api/run/claim`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ runId, score, wallet }),
+    });
+    if (!r.ok) {
+        const d = await r.json().catch(() => null) as { error?: string } | null;
+        throw new Error(d?.error || `claim_failed_${r.status}`);
     }
+    return (await r.json()) as RewardVoucher;
 }
 
 export interface ShopItem {

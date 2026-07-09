@@ -69,7 +69,7 @@ export interface RewardVoucher {
     runId: string;
     player: string;
     score: number;
-    rewardAmount: number;
+    rewardAmount: string;
     deadline: number;
     signature: string;
 }
@@ -90,16 +90,16 @@ export interface CapsuleVoucher {
     signature: string;
 }
 
-export function computeReward(score: number): number {
-    const reward = Math.floor(score / 10);
-    return Math.max(1_000000000_000000000, Math.min(reward, 100_000000000_000000000));
+export function computeReward(score: number): bigint {
+    const rewardRush = Math.max(1, Math.min(Math.floor(score / 10), 100));
+    return BigInt(rewardRush) * 10n ** 18n;
 }
 
 interface SignParams {
     runId: string;
     player: string;
     score: number;
-    rewardAmount: number;
+    rewardAmount: bigint;
     deadline?: number;
 }
 
@@ -115,7 +115,7 @@ export async function signVoucher(params: SignParams): Promise<RewardVoucher> {
             runId: params.runId as `0x${string}`,
             player: params.player as `0x${string}`,
             score: BigInt(Math.floor(params.score)),
-            rewardAmount: BigInt(Math.floor(params.rewardAmount)),
+            rewardAmount: params.rewardAmount,
             deadline: BigInt(deadline),
         },
     });
@@ -124,7 +124,7 @@ export async function signVoucher(params: SignParams): Promise<RewardVoucher> {
         runId: params.runId,
         player: params.player,
         score: params.score,
-        rewardAmount: params.rewardAmount,
+        rewardAmount: params.rewardAmount.toString(),
         deadline,
         signature,
     };
