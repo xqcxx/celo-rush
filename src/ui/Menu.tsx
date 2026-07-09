@@ -25,44 +25,59 @@ export function Menu() {
             <div className="menu-hero" />
             <div className="menu-scrim" />
             <div className="menu-content">
-                <div className="kicker">THE CELO NEON CITY</div>
-                <img className="logo" src="/logo.png" alt="CELO RUSH" />
-                <p className="sub">Surf the Celo chain. Dodge rug pulls, scam bots &amp; gas spikes. Charge as far as you can.</p>
-
-                {!walletAddress ? (
-                    <div className="register-box">
-                        <p className="register-prompt">CONNECT WALLET TO PLAY</p>
-                        <p className="register-note">Each wallet maps to one player profile.</p>
+                <section className="menu-primary-pane">
+                    <div className="menu-brand-block">
+                        <div className="kicker">THE CELO NEON CITY</div>
+                        <img className="logo" src="/logo.png" alt="CELO RUSH" />
+                        <h1 className="menu-title">Run the neon chain.</h1>
+                        <p className="sub">Surf the Celo chain. Dodge rug pulls, scam bots &amp; gas spikes. Charge as far as you can.</p>
                     </div>
-                ) : !isRegistered ? (
-                    <RegisterGate />
-                ) : (
-                    <button className="btn primary" onClick={begin}>
-                        ENTER THE GATE ▸
-                    </button>
-                )}
 
-                <ConnectButton />
-                {isRegistered && <CheckInButton />}
-                <button className="btn ghost" onClick={openBoard}>
-                    LEADERBOARD
-                </button>
+                    <div className="menu-main-actions">
+                        {!walletAddress ? (
+                            <div className="register-box">
+                                <p className="register-prompt">CONNECT WALLET TO PLAY</p>
+                                <p className="register-note">Each wallet maps to one player profile.</p>
+                            </div>
+                        ) : !isRegistered ? (
+                            <RegisterGate />
+                        ) : (
+                            <button className="btn primary" onClick={begin}>
+                                ENTER THE GATE ▸
+                            </button>
+                        )}
 
-                {isRegistered && (
-                    <>
-                        <SeasonPanel />
-                        <AchievementsPanel />
-                        <ProfilePanel />
-                        <ShopPanel />
-                        <CapsulePanel />
-                        <UpgradePanel />
-                        <VotingPanel />
-                    </>
-                )}
+                        {isRegistered && <CheckInButton />}
+                        <button className="btn ghost" onClick={openBoard}>
+                            LEADERBOARD
+                        </button>
+                    </div>
 
-                <div className="controls">
-                    <span>◀ ▶ / A D — switch lane · SPACE / tap — dash</span>
-                </div>
+                    <div className="controls">
+                        <span>◀ ▶ / A D — switch lane · SPACE / tap — dash</span>
+                    </div>
+                </section>
+
+                <aside className="menu-side-pane">
+                    <ConnectButton />
+
+                    {isRegistered ? (
+                        <div className="menu-side-stack">
+                            <SeasonPanel />
+                            <AchievementsPanel />
+                            <ProfilePanel />
+                            <ShopPanel />
+                            <CapsulePanel />
+                            <UpgradePanel />
+                            <VotingPanel />
+                        </div>
+                    ) : (
+                        <div className="menu-tip-card">
+                            <span>PLAYER SYSTEMS</span>
+                            <strong>Register to unlock profile, rewards, shop, capsules, seasons and voting.</strong>
+                        </div>
+                    )}
+                </aside>
             </div>
         </div>
     );

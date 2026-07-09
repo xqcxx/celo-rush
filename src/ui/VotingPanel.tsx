@@ -98,8 +98,8 @@ export function VotingPanel() {
     if (!walletAddress || !isRegistered || proposals.length === 0) return null;
 
     return (
-        <div className="panel voting-panel">
-            <div className="kicker">COMMUNITY VOTING</div>
+        <details className="panel menu-panel voting-panel">
+            <summary className="panel-summary">COMMUNITY VOTING</summary>
             {proposals.map((p) => (
                 <div key={p.id} className="vote-card">
                     <strong className="vote-desc">{p.description}</strong>
@@ -125,6 +125,6 @@ export function VotingPanel() {
                     </div>
                 </div>
             ))}
-        </div>
+        </details>
     );
 }

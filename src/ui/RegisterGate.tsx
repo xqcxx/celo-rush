@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { usePlayerRegistry } from '../onchain/usePlayerRegistry';
 import { registerPlayer } from '../api';
 import { useGameStore } from '../store';
@@ -7,19 +7,41 @@ export function RegisterGate() {
     const { register, isPending, isConfirming, isSuccess, isError, error, txHash } = usePlayerRegistry();
     const walletAddress = useGameStore((s) => s.walletAddress);
     const setRegistered = useGameStore((s) => s.setRegistered);
+    const [syncing, setSyncing] = useState(false);
+    const [syncError, setSyncError] = useState<string | null>(null);
+
+    const syncRegistration = () => {
+        if (!walletAddress) return;
+        setSyncing(true);
+        setSyncError(null);
+        registerPlayer(walletAddress).then((ok) => {
+            setSyncing(false);
+            if (ok) setRegistered(true);
+            else setSyncError('Confirmed on-chain, but backend sync failed. Check the API and retry.');
+        });
+    };
 
     useEffect(() => {
         if (isSuccess && txHash && walletAddress) {
-            registerPlayer(walletAddress).then((ok) => {
-                if (ok) setRegistered(true);
-            });
+            syncRegistration();
         }
-    }, [isSuccess, txHash, walletAddress, setRegistered]);
+    }, [isSuccess, txHash, walletAddress]);
 
-    if (isPending || isConfirming) {
+    if (isPending || isConfirming || syncing) {
         return (
             <div className="register-box">
-                <p className="register-status">{isPending ? 'CONFIRM IN WALLET...' : 'REGISTERING...'}</p>
+                <p className="register-status">{isPending ? 'CONFIRM IN WALLET...' : syncing ? 'SYNCING PLAYER...' : 'REGISTERING...'}</p>
+            </div>
+        );
+    }
+
+    if (syncError) {
+        return (
+            <div className="register-box">
+                <p className="register-error">{syncError}</p>
+                <button className="btn primary" onClick={syncRegistration}>
+                    RETRY SYNC ▸
+                </button>
             </div>
         );
     }

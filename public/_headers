@@ -2,7 +2,7 @@
 # frame-ancestors + X-Frame-Options can ONLY be set as real headers (not <meta>),
 # so clickjacking protection lives here.
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self'; font-src 'self'; connect-src 'self' https://api.trybullrush.xyz; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self'; font-src 'self'; connect-src 'self' https://api.trybullrush.xyz https://alfajores-forno.celo-testnet.org https://forno.celo.org https://forno.celo-sepolia.celo-testnet.org https://celo-sepolia.g.alchemy.com wss://relay.walletconnect.com https://rpc.walletconnect.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin

@@ -9,8 +9,8 @@ export function AchievementsPanel() {
     if (!walletAddress || !isRegistered) return null;
 
     return (
-        <div className="panel achievements-panel">
-            <div className="kicker">ACHIEVEMENTS</div>
+        <details className="panel menu-panel achievements-panel">
+            <summary className="panel-summary">ACHIEVEMENTS</summary>
             {claimable.length > 0 && (
                 <div className="ach-section">
                     <span className="ach-label">CLAIMABLE</span>
@@ -42,6 +42,6 @@ export function AchievementsPanel() {
             {(earned.length === 0 && claimable.length === 0) && (
                 <p className="sub">No achievements yet. Keep playing!</p>
             )}
-        </div>
+        </details>
     );
 }

@@ -76,8 +76,8 @@ export function SeasonPanel() {
     const daysLeft = Math.max(0, Math.ceil(endsIn / 86400000));
 
     return (
-        <div className="panel season-panel">
-            <div className="kicker">SEASON {season.id}</div>
+        <details className="panel menu-panel season-panel">
+            <summary className="panel-summary">SEASON {season.id}</summary>
             <p className="sub">{daysLeft}d remaining</p>
             {entered ? (
                 <div className="checkin-done" style={{ width: '100%' }}>
@@ -88,6 +88,6 @@ export function SeasonPanel() {
                     {approval.isPending || approval.isConfirming ? 'APPROVING...' : isPending ? 'SIGNING...' : isConfirming ? 'ENTERING...' : approval.hasAllowance ? 'ENTER SEASON · 10 RUSH' : 'APPROVE RUSH'}
                 </button>
             )}
-        </div>
+        </details>
     );
 }

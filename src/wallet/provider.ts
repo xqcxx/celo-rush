@@ -1,16 +1,23 @@
 import { createConfig, http } from 'wagmi';
 import { celo, celoAlfajores } from 'wagmi/chains';
 import { injected, walletConnect } from 'wagmi/connectors';
+import { defineChain } from 'viem';
 
 const targetChainId = Number(import.meta.env.VITE_CHAIN_ID || 44787);
+const rpcUrl = import.meta.env.VITE_CELO_RPC_URL || 'https://alfajores-forno.celo-testnet.org';
 
 const celoTestnet = {
     ...celoAlfajores,
+    id: targetChainId,
+    name: targetChainId === 11142220 ? 'Celo Sepolia' : celoAlfajores.name,
+    network: targetChainId === 11142220 ? 'celo-sepolia' : celoAlfajores.network,
     rpcUrls: {
-        default: { http: [import.meta.env.VITE_CELO_RPC_URL || 'https://alfajores-forno.celo-testnet.org'] },
-        public: { http: [import.meta.env.VITE_CELO_RPC_URL || 'https://alfajores-forno.celo-testnet.org'] },
+        default: { http: [rpcUrl] },
+        public: { http: [rpcUrl] },
     },
 } as const;
+
+const customCeloTestnet = defineChain(celoTestnet);
 
 const celoMainnet = {
     ...celo,
@@ -23,7 +30,7 @@ const celoMainnet = {
 const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || '';
 
 export const config = createConfig({
-    chains: [celoTestnet, celoMainnet],
+    chains: [customCeloTestnet, celoMainnet],
     connectors: [
         injected({
             shimDisconnect: true,
@@ -48,7 +55,7 @@ export const config = createConfig({
             : []),
     ],
     transports: {
-        [celoTestnet.id]: http(),
+        [customCeloTestnet.id]: http(rpcUrl),
         [celoMainnet.id]: http(),
     },
 });
@@ -64,9 +71,11 @@ export function getChainId(): number {
 }
 
 export function getActiveChain() {
-    return targetChainId === celo.id ? celoMainnet : celoTestnet;
+    return targetChainId === celo.id ? celoMainnet : customCeloTestnet;
 }
 
 export function chainDisplayName(): string {
-    return targetChainId === celo.id ? 'Celo Mainnet' : 'Celo Alfajores Testnet';
+    if (targetChainId === celo.id) return 'Celo Mainnet';
+    if (targetChainId === 11142220) return 'Celo Sepolia';
+    return 'Celo Alfajores Testnet';
 }
