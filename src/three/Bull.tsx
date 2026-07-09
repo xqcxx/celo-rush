@@ -22,6 +22,17 @@ type LegRefs = {
     br: RefObject<THREE.Group | null>;
 };
 
+const SKIN_STYLE: Record<number, { body: string; emissive: string; horn: string; eye: string }> = {
+    9: { body: '#07150b', emissive: '#39ff14', horn: '#8dff7a', eye: '#39e6ff' },
+    10: { body: '#06131d', emissive: '#00d4ff', horn: '#39e6ff', eye: '#ffd23f' },
+    12: { body: '#151016', emissive: '#ff2d3a', horn: '#ff4fd8', eye: '#39ff14' },
+};
+
+const TRAIL_STYLE: Record<number, { color: string; width: number }> = {
+    11: { color: '#ffd23f', width: 3.0 },
+    13: { color: '#39e6ff', width: 3.2 },
+};
+
 export function Bull() {
     const group = useRef<THREE.Group>(null);
     const body = useRef<THREE.Group>(null);
@@ -30,6 +41,21 @@ export function Bull() {
     const bl = useRef<THREE.Group>(null);
     const br = useRef<THREE.Group>(null);
     const runT = useRef(0);
+    const equippedSkinId = useGameStore((s) => s.equippedSkinId);
+    const equippedTrailId = useGameStore((s) => s.equippedTrailId);
+    const cosmeticLevels = useGameStore((s) => s.cosmeticLevels);
+
+    const skin = equippedSkinId ? SKIN_STYLE[equippedSkinId] : null;
+    const trail = equippedTrailId ? TRAIL_STYLE[equippedTrailId] : null;
+    const skinLevel = equippedSkinId ? cosmeticLevels[equippedSkinId] ?? 0 : 0;
+    const trailLevel = equippedTrailId ? cosmeticLevels[equippedTrailId] ?? 0 : 0;
+    const bodyColor = skin?.body ?? '#0b0b0f';
+    const accentColor = skin?.emissive ?? '#39ff14';
+    const hornColor = skin?.horn ?? '#39ff14';
+    const eyeColor = skin?.eye ?? '#ff2d3a';
+    const trailColor = trail?.color ?? '#39ff14';
+    const trailWidth = (trail?.width ?? 2.4) + trailLevel * 0.35;
+    const glow = 0.55 + skinLevel * 0.32;
 
     useEffect(() => {
         const dash = () => {
@@ -152,17 +178,17 @@ export function Bull() {
         <group ref={group}>
             <pointLight position={[0, 3, 1.6]} intensity={26} distance={12} decay={1.6} color="#cfffe0" />
             <group ref={body}>
-                <BullModel legs={{ fl, fr, bl, br }} />
+                <BullModel legs={{ fl, fr, bl, br }} bodyColor={bodyColor} accentColor={accentColor} hornColor={hornColor} eyeColor={eyeColor} glow={glow} />
             </group>
-            <Trail width={2.4} length={6} color={'#39ff14'} attenuation={(w) => w} decay={1}>
+            <Trail width={trailWidth} length={6 + trailLevel} color={trailColor} attenuation={(w) => w} decay={1}>
                 <mesh position={[0, 1, 1.3]}>
                     <sphereGeometry args={[0.14, 8, 8]} />
-                    <meshBasicMaterial color="#39ff14" toneMapped={false} />
+                    <meshBasicMaterial color={trailColor} toneMapped={false} />
                 </mesh>
             </Trail>
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.07, 0]}>
                 <ringGeometry args={[0.78, 1.2, 32]} />
-                <meshBasicMaterial color="#39ff14" transparent opacity={0.55} toneMapped={false} />
+                <meshBasicMaterial color={accentColor} transparent opacity={0.55 + skinLevel * 0.08} toneMapped={false} />
             </mesh>
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
                 <circleGeometry args={[1.15, 32]} />
@@ -186,16 +212,30 @@ function Leg({ refObj, x, z }: { refObj: RefObject<THREE.Group | null>; x: numbe
     );
 }
 
-function BullModel({ legs }: { legs: LegRefs }) {
+function BullModel({
+    legs,
+    bodyColor,
+    accentColor,
+    hornColor,
+    eyeColor,
+    glow,
+}: {
+    legs: LegRefs;
+    bodyColor: string;
+    accentColor: string;
+    hornColor: string;
+    eyeColor: string;
+    glow: number;
+}) {
     return (
         <group position={[0, 0, 0]}>
             {/* torso */}
             <RoundedBox args={[1.5, 1.25, 2.4]} radius={0.4} position={[0, 1.45, 0.1]} castShadow>
-                <meshStandardMaterial color="#0b0b0f" metalness={0.55} roughness={0.3} emissive="#0c4208" emissiveIntensity={0.55} />
+                <meshStandardMaterial color={bodyColor} metalness={0.55} roughness={0.3} emissive={accentColor} emissiveIntensity={glow} />
             </RoundedBox>
             {/* shoulder hump */}
             <RoundedBox args={[1.35, 0.6, 1.1]} radius={0.3} position={[0, 2.0, -0.5]} castShadow>
-                <meshStandardMaterial color="#0b0b0f" metalness={0.5} roughness={0.35} />
+                <meshStandardMaterial color={bodyColor} metalness={0.5} roughness={0.35} emissive={accentColor} emissiveIntensity={glow * 0.35} />
             </RoundedBox>
             {/* head */}
             <group position={[0, 1.55, -1.5]}>
@@ -209,25 +249,25 @@ function BullModel({ legs }: { legs: LegRefs }) {
                 {/* forehead brand */}
                 <mesh position={[0, 0.42, -0.5]} rotation={[0, 0, Math.PI / 4]}>
                     <boxGeometry args={[0.2, 0.2, 0.06]} />
-                    <meshStandardMaterial color="#39ff14" emissive="#39ff14" emissiveIntensity={4} toneMapped={false} />
+                    <meshStandardMaterial color={accentColor} emissive={accentColor} emissiveIntensity={4 + glow} toneMapped={false} />
                 </mesh>
                 {/* eyes (emissive red — bloom catches these) */}
                 <mesh position={[-0.28, 0.12, -0.45]}>
                     <sphereGeometry args={[0.12, 16, 16]} />
-                    <meshStandardMaterial color="#ff2d3a" emissive="#ff2d3a" emissiveIntensity={6} toneMapped={false} />
+                    <meshStandardMaterial color={eyeColor} emissive={eyeColor} emissiveIntensity={6} toneMapped={false} />
                 </mesh>
                 <mesh position={[0.28, 0.12, -0.45]}>
                     <sphereGeometry args={[0.12, 16, 16]} />
-                    <meshStandardMaterial color="#ff2d3a" emissive="#ff2d3a" emissiveIntensity={6} toneMapped={false} />
+                    <meshStandardMaterial color={eyeColor} emissive={eyeColor} emissiveIntensity={6} toneMapped={false} />
                 </mesh>
                 {/* horns (emissive green) */}
                 <mesh position={[-0.5, 0.55, 0.05]} rotation={[0, 0, 0.7]}>
                     <coneGeometry args={[0.13, 0.95, 12]} />
-                    <meshStandardMaterial color="#39ff14" emissive="#39ff14" emissiveIntensity={4} toneMapped={false} />
+                    <meshStandardMaterial color={hornColor} emissive={hornColor} emissiveIntensity={4 + glow} toneMapped={false} />
                 </mesh>
                 <mesh position={[0.5, 0.55, 0.05]} rotation={[0, 0, -0.7]}>
                     <coneGeometry args={[0.13, 0.95, 12]} />
-                    <meshStandardMaterial color="#39ff14" emissive="#39ff14" emissiveIntensity={4} toneMapped={false} />
+                    <meshStandardMaterial color={hornColor} emissive={hornColor} emissiveIntensity={4 + glow} toneMapped={false} />
                 </mesh>
             </group>
             {/* tail */}

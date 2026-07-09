@@ -1,27 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { useGameStore } from '../store';
 import { getChainId } from '../wallet/provider';
 import { SHOP_ITEMS } from '../api';
 import { rush, useRushApproval } from '../onchain/useRushApproval';
-
-const ARCADE_ITEMS_ABI = [
-    {
-        type: 'function',
-        name: 'openCapsule',
-        inputs: [
-            { name: 'itemId', type: 'uint256' },
-            { name: 'price', type: 'uint256' },
-            { name: 'nonce', type: 'uint256' },
-            { name: 'deadline', type: 'uint256' },
-            { name: 'signature', type: 'bytes' },
-        ],
-        outputs: [],
-        stateMutability: 'nonpayable',
-    },
-] as const;
-
-export const ARCADE_ITEMS_ADDRESS = (import.meta.env.VITE_ARCADE_ITEMS_CONTRACT_ADDRESS || '0x0000000000000000000000000000000000000000') as `0x${string}`;
+import { ARCADE_ITEMS_ABI, ARCADE_ITEMS_ADDRESS, useArcadeInventory } from '../onchain/useArcadeInventory';
 
 const CAPSULE_COST = 25; // RUSH
 
@@ -36,18 +19,30 @@ interface CapsuleVoucher {
 export function CapsulePanel() {
     const walletAddress = useGameStore((s) => s.walletAddress);
     const isRegistered = useGameStore((s) => s.isRegistered);
+    const setCosmeticLevels = useGameStore((s) => s.setCosmeticLevels);
     const chainId = getChainId();
-    const { writeContract, data: txHash, isPending } = useWriteContract();
+    const { writeContract, data: txHash, isPending, error } = useWriteContract();
     const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
     const [opening, setOpening] = useState(false);
     const [openedItem, setOpenedItem] = useState<string | null>(null);
+    const [openError, setOpenError] = useState<string | null>(null);
     const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || '';
     const approval = useRushApproval(walletAddress, ARCADE_ITEMS_ADDRESS, rush(10_000));
+    const inventory = useArcadeInventory(walletAddress, setCosmeticLevels);
+    const refetchInventory = inventory.refetch;
+
+    useEffect(() => {
+        if (isSuccess) {
+            setOpening(false);
+            void refetchInventory();
+        }
+    }, [isSuccess, refetchInventory]);
 
     const openCapsule = async () => {
         if (!BASE || !walletAddress) return;
         setOpening(true);
         setOpenedItem(null);
+        setOpenError(null);
         if (!approval.hasAllowance) {
             approval.approve();
             setOpening(false);
@@ -58,7 +53,12 @@ export function CapsulePanel() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ wallet: walletAddress }),
         });
-        if (!r.ok) { setOpening(false); return; }
+        if (!r.ok) {
+            const d = await r.json().catch(() => null) as { error?: string } | null;
+            setOpenError(d?.error || 'CAPSULE VOUCHER FAILED');
+            setOpening(false);
+            return;
+        }
         const voucher = await r.json() as CapsuleVoucher;
 
         const item = SHOP_ITEMS.find((s) => s.id === voucher.itemId);
@@ -76,8 +76,8 @@ export function CapsulePanel() {
     if (!walletAddress || !isRegistered) return null;
 
     return (
-        <div className="panel capsule-panel">
-            <div className="kicker">LOOT CAPSULES</div>
+        <details className="panel menu-panel capsule-panel">
+            <summary className="panel-summary">LOOT CAPSULES</summary>
             <p className="sub">Open a capsule for a random cosmetic. Costs {CAPSULE_COST} RUSH.</p>
 
             {isSuccess && openedItem && (
@@ -92,6 +92,7 @@ export function CapsulePanel() {
                     {isPending ? 'CONFIRM IN WALLET...' : isConfirming ? 'OPENING...' : 'ROLLING...'}
                 </div>
             )}
+            {(openError || error) && <div className="register-error">{openError || 'CAPSULE TRANSACTION FAILED'}</div>}
 
             <button
                 className="btn primary"
@@ -101,6 +102,11 @@ export function CapsulePanel() {
             >
                 {approval.isPending || approval.isConfirming ? 'APPROVING...' : opening ? '...' : approval.hasAllowance ? `OPEN CAPSULE · ${CAPSULE_COST} RUSH` : 'APPROVE RUSH'}
             </button>
-        </div>
+            <div className="item-state-row capsule-owned-row">
+                {SHOP_ITEMS.map((item) => (
+                    <span key={item.id}>{item.name}: {inventory.balances[item.id]?.toString() ?? '0'}</span>
+                ))}
+            </div>
+        </details>
     );
 }

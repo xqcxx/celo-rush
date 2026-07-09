@@ -12,6 +12,8 @@ const NAME = 'bullrush_name';
 const REF = 'bullrush_ref';
 const INTRO = 'bullrush_intro_seen';
 const MUSIC = 'bullrush_music_mode';
+const SKIN = 'bullrush_equipped_skin';
+const TRAIL = 'bullrush_equipped_trail';
 
 function safe<T>(fn: () => T, fallback: T): T {
     try {
@@ -58,6 +60,22 @@ export const storage = {
     },
     setMusicMode(i: number): void {
         safe(() => localStorage.setItem(MUSIC, String(i)), undefined);
+    },
+    equippedSkin(): number | null {
+        const raw = safe(() => localStorage.getItem(SKIN), null);
+        const id = raw ? Number(raw) : 0;
+        return Number.isFinite(id) && id > 0 ? id : null;
+    },
+    setEquippedSkin(id: number | null): void {
+        safe(() => id ? localStorage.setItem(SKIN, String(id)) : localStorage.removeItem(SKIN), undefined);
+    },
+    equippedTrail(): number | null {
+        const raw = safe(() => localStorage.getItem(TRAIL), null);
+        const id = raw ? Number(raw) : 0;
+        return Number.isFinite(id) && id > 0 ? id : null;
+    },
+    setEquippedTrail(id: number | null): void {
+        safe(() => id ? localStorage.setItem(TRAIL, String(id)) : localStorage.removeItem(TRAIL), undefined);
     },
     captureRef(): void {
         const raw = safe(() => new URLSearchParams(window.location.search).get('r'), null);
