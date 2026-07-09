@@ -41,9 +41,14 @@ export async function initSchema(): Promise<void> {
     await sql`
         CREATE TABLE IF NOT EXISTS players (
             wallet      text PRIMARY KEY,
+            name        text,
+            name_key    text,
             registered_at timestamptz DEFAULT now()
         )
     `;
+    await sql`ALTER TABLE players ADD COLUMN IF NOT EXISTS name text`;
+    await sql`ALTER TABLE players ADD COLUMN IF NOT EXISTS name_key text`;
+    await sql`CREATE UNIQUE INDEX IF NOT EXISTS players_name_key_idx ON players (name_key) WHERE name_key IS NOT NULL`;
     await sql`CREATE INDEX IF NOT EXISTS runs_distance_idx ON runs (distance DESC)`;
     await sql`
         CREATE TABLE IF NOT EXISTS achievement_claims (

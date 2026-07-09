@@ -101,9 +101,13 @@ interface GameState {
     muted: boolean;
     musicMode: number;
     walletAddress: string | null;
+    playerName: string | null;
     isRegistered: boolean;
     gameMode: 'casual' | 'ranked';
     gameRunId: string | null;
+    equippedSkinId: number | null;
+    equippedTrailId: number | null;
+    cosmeticLevels: Record<number, number>;
 
     finishIntro: () => void;
     triggerCloud: () => void;
@@ -123,9 +127,13 @@ interface GameState {
     damage: (amount: number, cause: string) => void;
     die: (cause: string) => void;
     setWalletAddress: (addr: string | null) => void;
+    setPlayerName: (name: string | null) => void;
     setRegistered: (v: boolean) => void;
     setGameMode: (mode: 'casual' | 'ranked') => void;
     setGameRunId: (id: string | null) => void;
+    equipSkin: (id: number | null) => void;
+    equipTrail: (id: number | null) => void;
+    setCosmeticLevels: (levels: Record<number, number>) => void;
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -143,9 +151,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     muted: false,
     musicMode: storage.musicMode(),
     walletAddress: null,
+    playerName: null,
     isRegistered: false,
     gameMode: 'casual',
     gameRunId: null,
+    equippedSkinId: storage.equippedSkin(),
+    equippedTrailId: storage.equippedTrail(),
+    cosmeticLevels: {},
 
     finishIntro: () => {
         storage.setIntroSeen();
@@ -200,7 +212,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         });
     },
     setWalletAddress: (addr) => set({ walletAddress: addr }),
+    setPlayerName: (name) => set({ playerName: name }),
     setRegistered: (v) => set({ isRegistered: v }),
     setGameMode: (mode) => set({ gameMode: mode }),
     setGameRunId: (id) => set({ gameRunId: id }),
+    equipSkin: (id) => {
+        storage.setEquippedSkin(id);
+        set({ equippedSkinId: id });
+    },
+    equipTrail: (id) => {
+        storage.setEquippedTrail(id);
+        set({ equippedTrailId: id });
+    },
+    setCosmeticLevels: (levels) => set({ cosmeticLevels: levels }),
 }));

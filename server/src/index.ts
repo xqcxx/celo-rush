@@ -10,7 +10,7 @@ import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas';
 import { createPublicClient, getAddress, http, isAddress } from 'viem';
 import { celo, celoAlfajores } from 'viem/chains';
 import { sql, initSchema } from './db.ts';
-import { redis, LB, rateLimit, recordScore, topScores } from './redis.ts';
+import { redis, rateLimit } from './redis.ts';
 import { rankFor } from './ranks.ts';
 import { computeReward, signVoucher, signBadgeVoucher, signCapsuleVoucher, signerConfigured } from './signer.ts';
 import { getPlayerAchievements, isBadgeEligible, ACHIEVEMENTS } from './achievements.ts';
@@ -92,6 +92,20 @@ function normalizeWallet(raw: unknown): string | null {
     return getAddress(raw).toLowerCase();
 }
 
+function shortWallet(wallet: string): string {
+    return `${wallet.slice(0, 6)}...${wallet.slice(-4)}`;
+}
+
+function cleanPlayerName(raw: unknown): { name: string; key: string } | null {
+    if (typeof raw !== 'string') return null;
+    const name = raw.replace(/[^\x20-\x7E]/g, '').replace(/\s+/g, ' ').trim();
+    if (name.length < 3 || name.length > 16) return null;
+    if (!/^[A-Za-z0-9][A-Za-z0-9 _-]*[A-Za-z0-9]$/.test(name)) return null;
+    const key = name.toLowerCase();
+    if (['anon', 'admin', 'celo', 'rush', 'celo rush', 'bull rush'].includes(key)) return null;
+    return { name, key };
+}
+
 async function isPlayerRegistered(wallet: string): Promise<boolean> {
     const rows = await sql`SELECT wallet FROM players WHERE wallet = ${wallet}`;
     if (rows.length > 0) return true;
@@ -136,13 +150,13 @@ app.get('/api/players/:wallet', async (c) => {
     const wallet = normalizeWallet(c.req.param('wallet'));
     if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
 
-    const rows = await sql`SELECT wallet, registered_at FROM players WHERE wallet = ${wallet}`;
+    const rows = await sql`SELECT wallet, name, registered_at FROM players WHERE wallet = ${wallet}`;
     if (rows.length === 0) {
         const registered = await isPlayerRegistered(wallet);
-        return c.json({ registered });
+        return c.json({ registered, wallet: registered ? wallet : undefined, name: null });
     }
 
-    return c.json({ registered: true, wallet: rows[0].wallet, registeredAt: rows[0].registered_at });
+    return c.json({ registered: true, wallet: rows[0].wallet, name: rows[0].name ?? null, registeredAt: rows[0].registered_at });
 });
 
 app.post('/api/players/register', async (c) => {
@@ -160,6 +174,29 @@ app.post('/api/players/register', async (c) => {
 
     await sql`INSERT INTO players (wallet) VALUES (${wallet}) ON CONFLICT (wallet) DO NOTHING`;
     return c.json({ registered: true, wallet });
+});
+
+app.post('/api/players/:wallet/name', async (c) => {
+    const ip = ipOf(c);
+    if (!(await rateLimit(ip, 'player-name', 12, 60))) return c.json({ error: 'rate_limited' }, 429);
+
+    const wallet = normalizeWallet(c.req.param('wallet'));
+    if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
+    if (!(await isPlayerRegistered(wallet))) return c.json({ error: 'player_not_registered' }, 403);
+
+    const body = await c.req.json().catch(() => null);
+    const cleaned = cleanPlayerName(body?.name);
+    if (!cleaned) return c.json({ error: 'invalid_name' }, 400);
+
+    const taken = await sql`SELECT wallet FROM players WHERE name_key = ${cleaned.key} AND wallet <> ${wallet} LIMIT 1`;
+    if (taken.length > 0) return c.json({ error: 'name_taken' }, 409);
+
+    await sql`
+        INSERT INTO players (wallet, name, name_key)
+        VALUES (${wallet}, ${cleaned.name}, ${cleaned.key})
+        ON CONFLICT (wallet) DO UPDATE SET name = EXCLUDED.name, name_key = EXCLUDED.name_key
+    `;
+    return c.json({ registered: true, wallet, name: cleaned.name });
 });
 
 const StartRunSchema = z.object({
@@ -185,7 +222,7 @@ app.post('/api/run/start', async (c) => {
         `seed:${token}`,
         JSON.stringify({ seed, t: Date.now(), ip, wallet, gameMode: parsed.data.gameMode, runId: parsed.data.runId ?? null }),
         'EX',
-        180,
+        7200,
     );
     return c.json({ seed, token });
 });
@@ -240,10 +277,12 @@ app.post('/api/run/submit', async (c) => {
 
     const id = randomUUID();
     const rank = rankFor(b.distance);
+    const players = await sql`SELECT name FROM players WHERE wallet = ${wallet} LIMIT 1`;
+    const playerName = typeof players[0]?.name === 'string' && players[0].name ? players[0].name : shortWallet(wallet);
 
     await sql`INSERT INTO runs ${sql({
         id,
-        name: b.name,
+        name: playerName,
         distance: b.distance,
         score: b.score,
         rank,
@@ -262,10 +301,20 @@ app.post('/api/run/submit', async (c) => {
 
     if (suspicious) return c.json({ ok: true, hidden: true, rank });
 
-    const member = JSON.stringify({ n: b.name, r: rank, id });
-    await recordScore(member, b.distance, b.ref);
-    const position = await redis.zrevrank(LB.alltime, member);
-    return c.json({ ok: true, rank, position: position === null ? null : position + 1 });
+    const positionRows = await sql`
+        WITH best AS (
+            SELECT wallet, MAX(distance) AS distance
+            FROM runs
+            WHERE suspicious = false
+            GROUP BY wallet
+        ), ranked AS (
+            SELECT wallet, ROW_NUMBER() OVER (ORDER BY distance DESC) AS position
+            FROM best
+        )
+        SELECT position FROM ranked WHERE wallet = ${wallet}
+    `;
+    const position = positionRows.length > 0 ? Number(positionRows[0].position) : null;
+    return c.json({ ok: true, rank, position });
 });
 
 const ClaimVoucherSchema = z.object({
@@ -477,10 +526,42 @@ app.get('/api/leaderboard', async (c) => {
     const period = c.req.query('period') || 'alltime';
     const squad = c.req.query('squad');
     const limit = Math.min(Number(c.req.query('limit') || 100), 200);
-    const key = squad ? LB.squad(squad) : period === 'daily' ? LB.daily() : period === 'weekly' ? LB.weekly() : LB.alltime;
-    const entries = await topScores(key, limit);
+    const timeClause = period === 'daily'
+        ? sql`AND r.created_at >= now() - interval '1 day'`
+        : period === 'weekly'
+          ? sql`AND r.created_at >= now() - interval '7 days'`
+          : sql``;
+    const squadClause = squad && /^[A-Za-z0-9_-]{1,24}$/.test(squad) ? sql`AND r.referrer = ${squad}` : sql``;
+    const entries = await sql`
+        WITH ranked_runs AS (
+            SELECT
+                r.wallet,
+                COALESCE(p.name, substring(r.wallet from 1 for 6) || '...' || right(r.wallet, 4)) AS name,
+                r.distance,
+                r.rank,
+                ROW_NUMBER() OVER (PARTITION BY r.wallet ORDER BY r.distance DESC, r.score DESC, r.created_at ASC) AS wallet_rank
+            FROM runs r
+            LEFT JOIN players p ON p.wallet = r.wallet
+            WHERE r.suspicious = false
+            ${timeClause}
+            ${squadClause}
+        ), best AS (
+            SELECT name, distance, rank
+            FROM ranked_runs
+            WHERE wallet_rank = 1
+        )
+        SELECT ROW_NUMBER() OVER (ORDER BY distance DESC) AS position, name, distance, rank
+        FROM best
+        ORDER BY distance DESC
+        LIMIT ${limit}
+    `;
     c.header('Cache-Control', 'public, s-maxage=10, stale-while-revalidate=30');
-    return c.json({ period: squad ? `squad:${squad}` : period, entries });
+    return c.json({ period: squad ? `squad:${squad}` : period, entries: entries.map((e) => ({
+        position: Number(e.position),
+        name: String(e.name),
+        distance: Number(e.distance),
+        rank: String(e.rank),
+    })) });
 });
 
 // Dynamic OG share card — the bull image with this run's score burned in.
