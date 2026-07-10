@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { useGameStore } from '../store';
 import { getChainId } from '../wallet/provider';
@@ -14,6 +14,7 @@ export function UpgradePanel() {
     const { writeContract, data: txHash, isPending, error } = useWriteContract();
     const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
     const [upgradingId, setUpgradingId] = useState<number | null>(null);
+    const [upgradeAfterApprovalId, setUpgradeAfterApprovalId] = useState<number | null>(null);
     const approval = useRushApproval(walletAddress, ARCADE_ITEMS_ADDRESS, rush(10_000));
     const inventory = useArcadeInventory(walletAddress, setCosmeticLevels);
     const refetchInventory = inventory.refetch;
@@ -22,12 +23,7 @@ export function UpgradePanel() {
         if (isSuccess) void refetchInventory();
     }, [isSuccess, refetchInventory]);
 
-    const upgrade = (itemId: number) => {
-        setUpgradingId(itemId);
-        if (!approval.hasAllowance) {
-            approval.approve();
-            return;
-        }
+    const sendUpgrade = useCallback((itemId: number) => {
         if (!inventory.owns(itemId)) return;
         writeContract({
             address: ARCADE_ITEMS_ADDRESS,
@@ -36,6 +32,24 @@ export function UpgradePanel() {
             args: [BigInt(itemId)],
             chainId,
         });
+    }, [inventory, writeContract, chainId]);
+
+    useEffect(() => {
+        if (!upgradeAfterApprovalId || !approval.hasAllowance || approval.isPending || approval.isConfirming) return;
+        const itemId = upgradeAfterApprovalId;
+        setUpgradeAfterApprovalId(null);
+        setUpgradingId(itemId);
+        sendUpgrade(itemId);
+    }, [upgradeAfterApprovalId, approval.hasAllowance, approval.isPending, approval.isConfirming, sendUpgrade]);
+
+    const upgrade = (itemId: number) => {
+        setUpgradingId(itemId);
+        if (!approval.hasAllowance) {
+            setUpgradeAfterApprovalId(itemId);
+            approval.approve();
+            return;
+        }
+        sendUpgrade(itemId);
     };
 
     if (!walletAddress || !isRegistered) return null;
@@ -72,8 +86,8 @@ export function UpgradePanel() {
                             >
                                 {isPending && upgradingId === item.id
                                     ? (isConfirming ? '...' : 'SIGN...')
-                                    : upgradingId === item.id && !approval.hasAllowance
-                                        ? (approval.isPending || approval.isConfirming ? 'APPROVING...' : 'APPROVE')
+                                    : upgradeAfterApprovalId === item.id || (upgradingId === item.id && !approval.hasAllowance)
+                                        ? (approval.isPending || approval.isConfirming ? 'APPROVING...' : 'APPROVE & UPGRADE')
                                         : 'UPGRADE'}
                             </button>
                         </div>
