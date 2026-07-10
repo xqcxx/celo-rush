@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { SHOP_ITEMS } from '../api';
 import { getChainId } from '../wallet/provider';
@@ -18,6 +18,7 @@ export function ShopPanel() {
     const { writeContract, data: txHash, isPending, error } = useWriteContract();
     const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
     const [buyingId, setBuyingId] = useState<number | null>(null);
+    const [buyAfterApprovalId, setBuyAfterApprovalId] = useState<number | null>(null);
     const approval = useRushApproval(walletAddress, ARCADE_ITEMS_ADDRESS, rush(10_000));
     const inventory = useArcadeInventory(walletAddress, setCosmeticLevels);
     const refetchInventory = inventory.refetch;
@@ -26,12 +27,7 @@ export function ShopPanel() {
         if (isSuccess) void refetchInventory();
     }, [isSuccess, refetchInventory]);
 
-    const buy = (itemId: number) => {
-        setBuyingId(itemId);
-        if (!approval.hasAllowance) {
-            approval.approve();
-            return;
-        }
+    const sendBuy = useCallback((itemId: number) => {
         writeContract({
             address: ARCADE_ITEMS_ADDRESS,
             abi: ARCADE_ITEMS_ABI,
@@ -39,12 +35,30 @@ export function ShopPanel() {
             args: [BigInt(itemId)],
             chainId,
         });
+    }, [writeContract, chainId]);
+
+    useEffect(() => {
+        if (!buyAfterApprovalId || !approval.hasAllowance || approval.isPending || approval.isConfirming) return;
+        const itemId = buyAfterApprovalId;
+        setBuyAfterApprovalId(null);
+        setBuyingId(itemId);
+        sendBuy(itemId);
+    }, [buyAfterApprovalId, approval.hasAllowance, approval.isPending, approval.isConfirming, sendBuy]);
+
+    const buy = (itemId: number) => {
+        setBuyingId(itemId);
+        if (!approval.hasAllowance) {
+            setBuyAfterApprovalId(itemId);
+            approval.approve();
+            return;
+        }
+        sendBuy(itemId);
     };
 
     const equip = (item: (typeof SHOP_ITEMS)[number]) => {
         if (!inventory.owns(item.id)) return;
-        if (item.category === 'skin') equipSkin(item.id);
-        if (item.category === 'trail') equipTrail(item.id);
+        if (item.category === 'skin') equipSkin(equippedSkinId === item.id ? null : item.id);
+        if (item.category === 'trail') equipTrail(equippedTrailId === item.id ? null : item.id);
     };
 
     if (!walletAddress || !isRegistered) return null;
@@ -70,10 +84,9 @@ export function ShopPanel() {
                                 <button
                                     className="btn wallet-btn"
                                     onClick={() => equip(item)}
-                                    disabled={equippedSkinId === item.id || equippedTrailId === item.id}
                                     style={{ width: 'auto', padding: '6px 12px', fontSize: '12px' }}
                                 >
-                                    {equippedSkinId === item.id || equippedTrailId === item.id ? 'EQUIPPED' : 'EQUIP'}
+                                    {equippedSkinId === item.id || equippedTrailId === item.id ? 'UNEQUIP' : 'EQUIP'}
                                 </button>
                             )}
                             <button
@@ -84,8 +97,8 @@ export function ShopPanel() {
                             >
                                 {isPending && buyingId === item.id
                                     ? (isConfirming ? 'CONFIRMING...' : 'SIGNING...')
-                                    : buyingId === item.id && !approval.hasAllowance
-                                        ? (approval.isPending || approval.isConfirming ? 'APPROVING...' : 'APPROVE')
+                                    : buyAfterApprovalId === item.id || (buyingId === item.id && !approval.hasAllowance)
+                                        ? (approval.isPending || approval.isConfirming ? 'APPROVING...' : 'APPROVE & BUY')
                                         : 'BUY'}
                             </button>
                         </div>
