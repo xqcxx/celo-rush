@@ -1,9 +1,11 @@
 import { useWallet } from './useWallet';
 import { chainDisplayName } from './provider';
+import { useRushBalance } from '../onchain/useRushApproval';
 
 export function ConnectButton() {
-    const { isConnected, isConnecting, shortAddress, inMiniPay, connect, disconnect, isCorrectChain, switchToCelo } = useWallet();
+    const { address, isConnected, isConnecting, shortAddress, inMiniPay, connect, disconnect, isCorrectChain, switchToCelo } = useWallet();
     const chainName = chainDisplayName();
+    const rushBalance = useRushBalance(address);
 
     if (inMiniPay) return null;
 
@@ -40,7 +42,7 @@ export function ConnectButton() {
             <div className="wallet-card connected">
                 <div className="wallet-copy">
                     <span>Connected to {chainName}</span>
-                    <strong>{shortAddress}</strong>
+                    <strong>{shortAddress} · {rushBalance.isLoading ? '...' : rushBalance.formatted} RUSH</strong>
                 </div>
                 <button className="wallet-action secondary" onClick={disconnect}>
                     Disconnect
