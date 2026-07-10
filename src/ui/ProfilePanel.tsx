@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useGameStore } from '../store';
 import { setPlayerName } from '../api';
+import { useRushBalance } from '../onchain/useRushApproval';
 
 interface PlayerStats {
     total_runs: number;
@@ -21,6 +22,7 @@ export function ProfilePanel() {
     const [name, setName] = useState(playerName || '');
     const [saving, setSaving] = useState(false);
     const [nameError, setNameError] = useState<string | null>(null);
+    const rushBalance = useRushBalance(walletAddress);
     const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || '';
 
     useEffect(() => {
@@ -57,6 +59,10 @@ export function ProfilePanel() {
             <summary className="panel-summary">PROFILE</summary>
             <div className="profile-wallet">
                 {walletAddress.slice(0, 8)}...{walletAddress.slice(-6)}
+            </div>
+            <div className="rush-balance-card">
+                <span>RUSH BALANCE</span>
+                <strong>{rushBalance.isLoading ? '...' : rushBalance.formatted}</strong>
             </div>
             <div className="profile-name-row">
                 <input
