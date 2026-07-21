@@ -1,16 +1,16 @@
 import { createConfig, http } from 'wagmi';
-import { celo, celoAlfajores } from 'wagmi/chains';
+import { celo, celoSepolia } from 'wagmi/chains';
 import { injected, walletConnect } from 'wagmi/connectors';
 import { defineChain } from 'viem';
+import '../config';
 
 const targetChainId = Number(import.meta.env.VITE_CHAIN_ID || 44787);
 const rpcUrl = import.meta.env.VITE_CELO_RPC_URL || 'https://alfajores-forno.celo-testnet.org';
 
 const celoTestnet = {
-    ...celoAlfajores,
+    ...celoSepolia,
     id: targetChainId,
-    name: targetChainId === 11142220 ? 'Celo Sepolia' : celoAlfajores.name,
-    network: targetChainId === 11142220 ? 'celo-sepolia' : celoAlfajores.network,
+    name: targetChainId === 11142220 ? 'Celo Sepolia' : celoSepolia.name,
     rpcUrls: {
         default: { http: [rpcUrl] },
         public: { http: [rpcUrl] },

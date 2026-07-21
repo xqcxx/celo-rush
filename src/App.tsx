@@ -1,11 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { WagmiProvider } from 'wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { config } from './wallet/provider';
-import { useGameStore, refs } from './store';
+import { useGameStore } from './store';
 import { Audio } from './audio';
 import { storage } from './storage';
-import { startRun } from './api';
 import { Game } from './three/Game';
 import { Hud } from './ui/Hud';
 import { Menu } from './ui/Menu';
@@ -15,6 +14,7 @@ import { Board } from './ui/Board';
 import { Cinematic } from './ui/Cinematic';
 import { MusicChip } from './ui/MusicChip';
 import { WalletSyncer } from './wallet/WalletSyncer';
+import { TouchControls } from './ui/TouchControls';
 
 const queryClient = new QueryClient();
 
@@ -26,8 +26,51 @@ function AppInner() {
     const toggleMute = useGameStore((s) => s.toggleMute);
     const walletAddress = useGameStore((s) => s.walletAddress);
     const isRegistered = useGameStore((s) => s.isRegistered);
-    const gameMode = useGameStore((s) => s.gameMode);
-    const gameRunId = useGameStore((s) => s.gameRunId);
+    const enterGate = useGameStore((s) => s.enterGate);
+    const openBoard = useGameStore((s) => s.openBoard);
+    const reset = useGameStore((s) => s.reset);
+    const historyReady = useRef(false);
+    const handlingPop = useRef(false);
+
+    useEffect(() => {
+        const route = phase === 'intro' ? 'intro' : phase;
+        if (!historyReady.current) {
+            window.history.replaceState({ bullRushPhase: route }, '', `#${route}`);
+            historyReady.current = true;
+            return;
+        }
+        if (handlingPop.current) {
+            handlingPop.current = false;
+            return;
+        }
+        window.history.pushState({ bullRushPhase: route }, '', `#${route}`);
+    }, [phase]);
+
+    useEffect(() => {
+        const onPopState = () => {
+            const target = window.history.state?.bullRushPhase as string | undefined;
+            if (target === 'gate') {
+                handlingPop.current = true;
+                enterGate();
+                return;
+            }
+            if (target === 'board') {
+                handlingPop.current = true;
+                openBoard();
+                return;
+            }
+
+            // A run cannot be resumed by browser navigation. Return to the
+            // nearest safe screen and keep the URL in sync with that screen.
+            const fallback = target === 'playing' || target === 'dead' ? 'gate' : 'menu';
+            window.history.replaceState({ bullRushPhase: fallback }, '', `#${fallback}`);
+            handlingPop.current = true;
+            if (fallback === 'gate') enterGate();
+            else reset();
+        };
+        window.addEventListener('popstate', onPopState);
+        return () => window.removeEventListener('popstate', onPopState);
+    }, [enterGate, openBoard, reset]);
 
     useEffect(() => {
         storage.captureRef();
@@ -60,13 +103,9 @@ function AppInner() {
         if (phase === 'playing' && walletAddress && isRegistered) {
             Audio.unlock();
             Audio.cycleMusic();
-            void startRun(walletAddress, gameMode, gameRunId).then(({ seed, token }) => {
-                refs.seed = seed;
-                refs.token = token;
-            });
         }
         if (phase === 'dead') Audio.sfx('death');
-    }, [phase, walletAddress, isRegistered, gameMode, gameRunId]);
+    }, [phase, walletAddress, isRegistered]);
 
     const onMute = () => {
         Audio.unlock();
@@ -78,6 +117,7 @@ function AppInner() {
             <WalletSyncer />
             <Game />
             {phase === 'playing' && <Hud />}
+            {phase === 'playing' && <TouchControls />}
             {phase === 'intro' && <Cinematic />}
             {phase === 'menu' && <Menu />}
             {phase === 'gate' && <Gate />}

@@ -73,21 +73,25 @@ export function Bull() {
         };
         const onKey = (e: KeyboardEvent) => {
             const k = e.key.toLowerCase();
-            if (k === 'arrowleft' || k === 'a') move(-1);
-            else if (k === 'arrowright' || k === 'd') move(1);
-            else if (k === 'arrowup' || k === 'w' || k === ' ') dash();
+            if (k === 'arrowleft' || k === 'a') { e.preventDefault(); move(-1); }
+            else if (k === 'arrowright' || k === 'd') { e.preventDefault(); move(1); }
+            else if (k === 'arrowup' || k === 'w' || k === ' ' || e.code === 'Space') { e.preventDefault(); dash(); }
         };
         let sx = 0;
         let sy = 0;
         let st = 0;
         const onTS = (e: TouchEvent) => {
+            if (e.target instanceof Element && e.target.closest('.touch-controls')) return;
             const t = e.touches[0];
+            if (!t) return;
             sx = t.clientX;
             sy = t.clientY;
             st = performance.now();
         };
         const onTE = (e: TouchEvent) => {
+            if (e.target instanceof Element && e.target.closest('.touch-controls')) return;
             const t = e.changedTouches[0];
+            if (!t) return;
             const dx = t.clientX - sx;
             const dy = t.clientY - sy;
             const dt = performance.now() - st;

@@ -154,6 +154,16 @@ export function Track() {
             for (const it of seg.items) {
                 if (it.resolved) continue;
                 const wz = seg.z + it.localZ;
+                if (wz > pos.z + HIT_Z) {
+                    it.resolved = true;
+                    if (!HAZARDS[it.kind].powerup) {
+                        if (it.kind === 'jeet') refs.jeetsDodged++;
+                        else if (it.kind === 'sniper') refs.snipersSurvived++;
+                        else if (it.kind === 'mev') refs.mevAvoided++;
+                    }
+                    resolvedAny = true;
+                    continue;
+                }
                 if (Math.abs(wz - pos.z) > HIT_Z) continue;
                 if (it.lane !== lane) continue;
 
@@ -187,6 +197,7 @@ export function Track() {
                 if (dashing && cfg.dashBreakable) {
                     store.addScore(120);
                     store.addCombo();
+                    if (it.kind === 'jeet') refs.jeetsDodged++;
                     Audio.sfx('break');
                     refs.shake = Math.max(refs.shake, 0.2);
                     it.resolved = true;
@@ -195,6 +206,8 @@ export function Track() {
                 }
 
                 if (refs.shield) {
+                    if (it.kind === 'sniper') refs.snipersSurvived++;
+                    if (it.kind === 'mev') refs.mevAvoided++;
                     store.setShield(false);
                     Audio.sfx('break');
                     refs.shake = Math.max(refs.shake, 0.25);
@@ -211,7 +224,7 @@ export function Track() {
                 store.flashHit();
                 it.resolved = true;
                 resolvedAny = true;
-                if (cfg.damage === 'instant') store.die(cfg.cause);
+                if (cfg.damage === 'instant') { refs.damageTaken += 3; store.die(cfg.cause); }
                 else store.damage(cfg.damage, cfg.cause);
             }
         }

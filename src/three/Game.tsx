@@ -1,7 +1,7 @@
 import { Suspense, useLayoutEffect } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { useTexture } from '@react-three/drei';
-import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
+import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import { Bull } from './Bull';
 import { Track } from './Track';
@@ -56,7 +56,6 @@ export function Game() {
 
             <EffectComposer>
                 <Bloom intensity={1.0} luminanceThreshold={0.25} luminanceSmoothing={0.3} mipmapBlur />
-                <Vignette offset={0.28} darkness={0.85} />
             </EffectComposer>
         </Canvas>
     );

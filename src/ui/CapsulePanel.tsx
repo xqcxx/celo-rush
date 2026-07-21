@@ -22,12 +22,12 @@ export function CapsulePanel() {
     const setCosmeticLevels = useGameStore((s) => s.setCosmeticLevels);
     const chainId = getChainId();
     const { writeContract, data: txHash, isPending, error } = useWriteContract();
-    const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
+    const { isLoading: isConfirming, isSuccess, isError: receiptError } = useWaitForTransactionReceipt({ hash: txHash });
     const [opening, setOpening] = useState(false);
     const [openedItem, setOpenedItem] = useState<string | null>(null);
     const [openError, setOpenError] = useState<string | null>(null);
     const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || '';
-    const approval = useRushApproval(walletAddress, ARCADE_ITEMS_ADDRESS, rush(10_000));
+    const approval = useRushApproval(walletAddress, ARCADE_ITEMS_ADDRESS, rush(CAPSULE_COST));
     const inventory = useArcadeInventory(walletAddress, setCosmeticLevels);
     const refetchInventory = inventory.refetch;
 
@@ -92,7 +92,7 @@ export function CapsulePanel() {
                     {isPending ? 'CONFIRM IN WALLET...' : isConfirming ? 'OPENING...' : 'ROLLING...'}
                 </div>
             )}
-            {(openError || error) && <div className="register-error">{openError || 'CAPSULE TRANSACTION FAILED'}</div>}
+            {(openError || error || receiptError || approval.isError) && <div className="register-error">{openError || 'CAPSULE TRANSACTION FAILED. TRY AGAIN.'}</div>}
 
             <button
                 className="btn primary"

@@ -7,6 +7,7 @@ export const apiEnabled = BASE.length > 0;
 
 export interface LbEntry {
     position: number;
+    wallet?: string;
     name: string;
     distance: number;
     rank: string;
@@ -27,13 +28,14 @@ export interface SubmitPayload {
     durationMs: number;
     deathCause?: string;
     wallet?: string;
-    gameMode?: 'casual' | 'ranked';
+    gameMode?: 'ranked';
     runId?: string | null;
     ref?: string;
-}
-
-function localSeed(): string {
-    return `${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
+    jeetsDodged?: number;
+    snipersSurvived?: number;
+    mevAvoided?: number;
+    damageTaken?: number;
+    maxCombo?: number;
 }
 
 // Share link on the GAME's own domain (a Cloudflare Pages Function at /s serves
@@ -46,11 +48,10 @@ export function shareLink(p: { distance: number; rank: string; name: string }): 
 
 export async function startRun(
     wallet?: string | null,
-    gameMode: 'casual' | 'ranked' = 'casual',
+    gameMode: 'ranked' = 'ranked',
     runId?: string | null,
-): Promise<{ seed: string; token: string | null }> {
-    if (!BASE) return { seed: localSeed(), token: null };
-    if (!wallet) return { seed: localSeed(), token: null };
+): Promise<{ token: string | null }> {
+    if (!BASE || !wallet) throw new Error('ranked_backend_required');
     try {
         const r = await fetch(`${BASE}/api/run/start`, {
             method: 'POST',
@@ -58,10 +59,10 @@ export async function startRun(
             body: JSON.stringify({ wallet, gameMode, runId: runId || undefined }),
         });
         if (!r.ok) throw new Error('start failed');
-        const d = (await r.json()) as { seed: string; token: string };
-        return { seed: d.seed, token: d.token };
-    } catch {
-        return { seed: localSeed(), token: null };
+        const d = (await r.json()) as { token: string };
+        return { token: d.token };
+    } catch (error) {
+        throw (error instanceof Error ? error : new Error('ranked run start failed'));
     }
 }
 
@@ -189,5 +190,93 @@ export async function getLeaderboard(
         return d.entries;
     } catch {
         return null;
+    }
+}
+
+export interface WeeklyHistoryEntry {
+    week: number;
+    position: number;
+    wallet: string;
+    name: string;
+    games: number;
+    distance: number;
+    score: number;
+    requested: boolean;
+    withdrawn: boolean;
+    approvedAmount: string;
+    canRequest: boolean;
+}
+
+export async function getWeeklyHistory(wallet: string): Promise<WeeklyHistoryEntry[]> {
+    if (!BASE || !wallet) return [];
+    try {
+        const r = await fetch(`${BASE}/api/weekly/history/${wallet.toLowerCase()}`);
+        if (!r.ok) return [];
+        const d = await r.json() as { history?: WeeklyHistoryEntry[] };
+        return d.history || [];
+    } catch {
+        return [];
+    }
+}
+
+export interface WeeklyRequestVoucher {
+    player: string;
+    week: number;
+    deadline: number;
+    signature: `0x${string}`;
+    position: number;
+    games: number;
+    distance: number;
+    score: number;
+}
+
+export async function requestWeeklyReward(wallet: string, week: number): Promise<WeeklyRequestVoucher> {
+    if (!BASE) throw new Error('weekly_backend_required');
+    const r = await fetch(`${BASE}/api/weekly/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet, week }),
+    });
+    const d = await r.json().catch(() => null) as (WeeklyRequestVoucher & { error?: string }) | null;
+    if (!r.ok || !d) throw new Error(d?.error || `weekly_request_failed_${r.status}`);
+    return d;
+}
+
+export async function syncWeeklyRequest(wallet: string, week: number, txHash: string): Promise<void> {
+    if (!BASE) throw new Error('weekly_backend_required');
+    const r = await fetch(`${BASE}/api/weekly/request/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet, week, txHash }),
+    });
+    if (!r.ok) {
+        const d = await r.json().catch(() => null) as { error?: string } | null;
+        throw new Error(d?.error || `weekly_sync_failed_${r.status}`);
+    }
+}
+
+export interface WeeklyRequestEntry {
+    week: number;
+    wallet: string;
+    tx_hash: string;
+    requested_at: string;
+    position: number | null;
+    games: number;
+    distance: number;
+    score: number;
+    requested: boolean;
+    withdrawn: boolean;
+    approvedAmount: string;
+}
+
+export async function getWeeklyRequests(): Promise<WeeklyRequestEntry[]> {
+    if (!BASE) return [];
+    try {
+        const r = await fetch(`${BASE}/api/weekly/requests`);
+        if (!r.ok) return [];
+        const d = await r.json() as { requests?: WeeklyRequestEntry[] };
+        return d.requests || [];
+    } catch {
+        return [];
     }
 }

@@ -16,10 +16,10 @@ export function ShopPanel() {
     const setCosmeticLevels = useGameStore((s) => s.setCosmeticLevels);
     const chainId = getChainId();
     const { writeContract, data: txHash, isPending, error } = useWriteContract();
-    const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
+    const { isLoading: isConfirming, isSuccess, isError: receiptError } = useWaitForTransactionReceipt({ hash: txHash });
     const [buyingId, setBuyingId] = useState<number | null>(null);
     const [buyAfterApprovalId, setBuyAfterApprovalId] = useState<number | null>(null);
-    const approval = useRushApproval(walletAddress, ARCADE_ITEMS_ADDRESS, rush(10_000));
+    const approval = useRushApproval(walletAddress, ARCADE_ITEMS_ADDRESS, rush(Math.max(...SHOP_ITEMS.map((item) => item.priceRush))));
     const inventory = useArcadeInventory(walletAddress, setCosmeticLevels);
     const refetchInventory = inventory.refetch;
 
@@ -106,7 +106,7 @@ export function ShopPanel() {
                 ))}
             </div>
             {inventory.isLoading && <div className="register-status">LOADING INVENTORY...</div>}
-            {error && <div className="register-error">PURCHASE FAILED</div>}
+            {(error || receiptError || approval.isError) && <div className="register-error">PURCHASE FAILED. TRY AGAIN.</div>}
         </details>
     );
 }

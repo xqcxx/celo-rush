@@ -1,31 +1,30 @@
 import { useEffect, useRef, useState } from 'react';
 import { useGameStore, refs } from '../store';
 import { storage } from '../storage';
-import { submitRun, shareLink, claimRunReward, type RewardVoucher } from '../api';
+import { startRun, submitRun, shareLink, claimRunReward } from '../api';
 import { useClaimReward } from '../onchain/useClaimReward';
 
 export function GameOverScreen() {
     const result = useGameStore((s) => s.result);
-    const start = useGameStore((s) => s.start);
     const reset = useGameStore((s) => s.reset);
     const openBoard = useGameStore((s) => s.openBoard);
     const walletAddress = useGameStore((s) => s.walletAddress);
     const playerName = useGameStore((s) => s.playerName);
-    const gameMode = useGameStore((s) => s.gameMode);
     const gameRunId = useGameStore((s) => s.gameRunId);
     const setGameRunId = useGameStore((s) => s.setGameRunId);
+    const setActiveRunState = useGameStore((s) => s.setActiveRunState);
 
-    const { claimReward, isPending: claimingTx, isConfirming: claimConfirming, isSuccess: claimSuccess, isError: claimError } = useClaimReward();
+    const { claimReward, isPending: claimingTx, isConfirming: claimConfirming, isSuccess: claimSuccess, isError: claimError, txHash } = useClaimReward();
 
     const [name, setName] = useState(() => storage.name() || '');
     const [globalPos, setGlobalPos] = useState<number | null>(null);
-    const [voucher, setVoucher] = useState<RewardVoucher | null>(null);
     const [claimStarted, setClaimStarted] = useState(false);
     const [claimVoucherError, setClaimVoucherError] = useState<string | null>(null);
     const [submitError, setSubmitError] = useState<string | null>(null);
     const [submittedRun, setSubmittedRun] = useState(false);
     const localId = useRef<string | null>(null);
     const submitted = useRef(false);
+    const submittedResult = useRef(false);
 
     const displayName = walletAddress
         ? playerName || `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
@@ -41,11 +40,24 @@ export function GameOverScreen() {
     const commit = async (): Promise<boolean> => {
         if (submitted.current) return submittedRun;
         if (!result) return false;
-        if (!refs.token) {
-            setSubmitError('RUN START TOKEN MISSING. START A NEW RUN AND TRY AGAIN.');
+        if (!walletAddress) {
+            setSubmitError('CONNECT AND REGISTER A WALLET BEFORE STARTING A RANKED RUN.');
             return false;
         }
+        if (!refs.token) {
+            try {
+                const prepared = await startRun(walletAddress, 'ranked', gameRunId);
+                refs.token = prepared.token;
+            } catch {
+                // The result remains retryable when the API recovers.
+            }
+            if (!refs.token) {
+                setSubmitError('RANKED RUN TOKEN MISSING. RETRY SUBMISSION OR START A NEW RUN.');
+                return false;
+            }
+        }
         submitted.current = true;
+        setActiveRunState('submitting');
         const finalName = walletAddress ? displayName : (name || '').trim() || 'ANON';
         if (localId.current) storage.rename(localId.current, finalName);
         setSubmitError(null);
@@ -57,16 +69,24 @@ export function GameOverScreen() {
             durationMs: result.durationMs,
             deathCause: result.cause,
             wallet: walletAddress || undefined,
-            gameMode,
+            gameMode: 'ranked',
             runId: gameRunId,
             ref: storage.ref() || undefined,
+            jeetsDodged: result.jeetsDodged,
+            snipersSurvived: result.snipersSurvived,
+            mevAvoided: result.mevAvoided,
+            damageTaken: result.damageTaken,
+            maxCombo: result.maxCombo,
         });
         if (!res) {
             submitted.current = false;
+            setActiveRunState('failed');
             setSubmitError('RUN SUBMIT FAILED. CHECK BACKEND LOGS, THEN RETRY CLAIM.');
             return false;
         }
         setSubmittedRun(true);
+        submittedResult.current = true;
+        setActiveRunState('submitted');
         if (res.position) setGlobalPos(res.position);
         if (res.hidden) setSubmitError('RUN SUBMITTED BUT FLAGGED BY ANTI-CHEAT; REWARD CLAIM IS DISABLED.');
         return !res.hidden;
@@ -76,15 +96,20 @@ export function GameOverScreen() {
         if (!result || !walletAddress || !gameRunId) return;
         setClaimStarted(true);
         setClaimVoucherError(null);
-        const submitted = await commit();
-        if (!submitted) {
+        if (submitted.current && !submittedResult.current) {
+            for (let attempt = 0; attempt < 30 && submitted.current && !submittedResult.current; attempt++) {
+                await new Promise((resolve) => window.setTimeout(resolve, 500));
+            }
+        }
+        const submissionReady = await commit();
+        if (!submissionReady) {
             setClaimStarted(false);
             setClaimVoucherError('REWARD VOUCHER NOT READY BECAUSE THE RUN DID NOT SUBMIT.');
             return;
         }
         try {
             const v = await claimRunReward(gameRunId, result.score, walletAddress);
-            setVoucher(v);
+            if (!v) throw new Error('reward_voucher_empty');
             claimReward(v);
         } catch (e) {
             setClaimStarted(false);
@@ -116,7 +141,9 @@ Can you survive the Celo neon city?
     const runItBack = () => {
         void commit();
         setGameRunId(null);
-        start();
+        setActiveRunState(null);
+        reset();
+        window.setTimeout(() => useGameStore.getState().enterGate(), 0);
     };
 
     useEffect(() => {
@@ -128,10 +155,24 @@ Can you survive the Celo neon city?
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [result]);
 
+    useEffect(() => {
+        if (!claimSuccess || !txHash || !walletAddress || !gameRunId) return;
+        const base = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || '';
+        if (!base) return;
+        void fetch(`${base}/api/run/claim/confirm`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ runId: gameRunId, wallet: walletAddress, txHash }),
+        }).catch(() => {});
+    }, [claimSuccess, txHash, walletAddress, gameRunId]);
+
+    useEffect(() => {
+        if (claimError) setClaimStarted(false);
+    }, [claimError]);
+
     if (!result) return null;
 
-    const isRanked = gameMode === 'ranked';
-    const estimatedReward = isRanked ? Math.max(1, Math.floor(result.score / 10)) : 0;
+    const estimatedReward = Math.max(1, Math.floor(result.score / 10));
     const claimDone = claimSuccess;
 
     return (
@@ -139,7 +180,7 @@ Can you survive the Celo neon city?
             <div className="panel">
                 <div className="death">{result.cause}</div>
                 <div className="charged">
-                    <span>{isRanked ? 'RANKED RUN' : 'YOU CHARGED'}</span>
+                    <span>RANKED RUN</span>
                     <strong>{result.distance.toLocaleString()} m</strong>
                 </div>
                 <div className="stats">
@@ -154,8 +195,9 @@ Can you survive the Celo neon city?
                 </div>
                 {globalPos && <div className="globalrank">GLOBAL&nbsp;#{globalPos.toLocaleString()}</div>}
                 {submitError && <div className="register-error">{submitError}</div>}
+                {!submittedRun && <button className="btn ghost" onClick={() => { void commit(); }}>RETRY LEADERBOARD SUBMISSION</button>}
 
-                {isRanked && !claimStarted && (
+                {!claimStarted && (
                     <button className="btn primary" onClick={handleClaim}>
                         CLAIM ~{estimatedReward} RUSH ▸
                     </button>

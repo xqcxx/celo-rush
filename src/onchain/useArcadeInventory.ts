@@ -86,7 +86,7 @@ export function useArcadeInventory(walletAddress: string | null | undefined, onL
         const balance = data?.[index * 2]?.result;
         const level = data?.[index * 2 + 1]?.result;
         balances[item.id] = typeof balance === 'bigint' ? balance : 0n;
-        levels[item.id] = typeof level === 'number' ? level : 0;
+        levels[item.id] = typeof level === 'bigint' ? Number(level) : typeof level === 'number' ? level : 0;
     });
 
     useEffect(() => {

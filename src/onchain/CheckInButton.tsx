@@ -4,7 +4,7 @@ import { useWallet } from '../wallet/useWallet';
 
 export function CheckInButton() {
     const { isConnected, inMiniPay } = useWallet();
-    const { canCheckIn, hasCheckedIn, streak, isPending, isConfirming, isSuccess, checkIn } = useCheckIn();
+    const { canCheckIn, hasCheckedIn, streak, isPending, isConfirming, isSuccess, checkIn, error } = useCheckIn();
 
     useEffect(() => {
         if (isSuccess) {
@@ -30,6 +30,8 @@ export function CheckInButton() {
             </div>
         );
     }
+
+    if (error) return <div className="register-error">CHECK-IN FAILED. TRY AGAIN.</div>;
 
     if (canCheckIn) {
         return (

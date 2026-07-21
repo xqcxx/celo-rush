@@ -72,7 +72,7 @@ export function useRushApproval(owner: string | null | undefined, spender: `0x${
         query: { enabled: !!owner && amount > 0n },
     });
     const { writeContract, data: hash, isPending } = useWriteContract();
-    const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+    const { isLoading: isConfirming, isSuccess, isError: receiptError } = useWaitForTransactionReceipt({ hash });
 
     const hasAllowance = typeof allowance === 'bigint' && allowance >= amount;
 
@@ -90,5 +90,5 @@ export function useRushApproval(owner: string | null | undefined, spender: `0x${
         if (isSuccess) void refetch();
     }, [isSuccess, refetch]);
 
-    return { allowance, hasAllowance, approve, isPending, isConfirming, isSuccess, refetch };
+    return { allowance, hasAllowance, approve, isPending, isConfirming, isSuccess, isError: receiptError, refetch };
 }

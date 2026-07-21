@@ -4,13 +4,14 @@ import { useGameStore } from '../store';
 export function AchievementsPanel() {
     const walletAddress = useGameStore((s) => s.walletAddress);
     const isRegistered = useGameStore((s) => s.isRegistered);
-    const { earned, claimable, claimBadge, isPending, getName, getDesc } = useAchievements(isRegistered ? walletAddress : null);
+    const { earned, claimable, claimBadge, isPending, error, getName, getDesc } = useAchievements(isRegistered ? walletAddress : null);
 
     if (!walletAddress || !isRegistered) return null;
 
     return (
         <details className="panel menu-panel achievements-panel">
             <summary className="panel-summary">ACHIEVEMENTS</summary>
+            {error && <div className="register-error">BADGE TRANSACTION FAILED. TRY AGAIN.</div>}
             {claimable.length > 0 && (
                 <div className="ach-section">
                     <span className="ach-label">CLAIMABLE</span>

@@ -31,7 +31,7 @@ export function useRankedRun(walletAddress?: string | null) {
     const { isLoading: isConfirming, isSuccess, isError } = useWaitForTransactionReceipt({ hash: txHash });
     const [storedRunId, setStoredRunId] = useState<string | null>(null);
     const [startAfterApproval, setStartAfterApproval] = useState(false);
-    const approval = useRushApproval(walletAddress, RUN_REWARDS_ADDRESS, rush(10_000));
+    const approval = useRushApproval(walletAddress, RUN_REWARDS_ADDRESS, rush(5));
 
     const sendStartRankedRun = useCallback(() => {
         const runIdBytes = keccak256(toHex(Date.now().toString(36) + Math.random().toString(36)));
@@ -61,17 +61,18 @@ export function useRankedRun(walletAddress?: string | null) {
     }, [startAfterApproval, approval.hasAllowance, approval.isPending, approval.isConfirming, sendStartRankedRun]);
 
     const confirmedRunId = isSuccess ? storedRunId : null;
+    const transactionError = isError || approval.isError;
 
     return useMemo(() => ({
         startRankedRun,
         isPending,
         isConfirming,
         isSuccess,
-        isError,
+        isError: transactionError,
         txHash,
         runId: confirmedRunId,
         needsApproval: !approval.hasAllowance,
         isApproving: approval.isPending || approval.isConfirming,
         isPreparingRanked: startAfterApproval,
-    }), [startRankedRun, isPending, isConfirming, isSuccess, isError, txHash, confirmedRunId, approval.hasAllowance, approval.isPending, approval.isConfirming, startAfterApproval]);
+    }), [startRankedRun, isPending, isConfirming, isSuccess, transactionError, txHash, confirmedRunId, approval.hasAllowance, approval.isPending, approval.isConfirming, startAfterApproval]);
 }

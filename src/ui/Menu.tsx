@@ -5,11 +5,11 @@ import { CheckInButton } from '../onchain/CheckInButton';
 import { RegisterGate } from './RegisterGate';
 import { AchievementsPanel } from './AchievementsPanel';
 import { ShopPanel } from './ShopPanel';
-import { SeasonPanel } from './SeasonPanel';
-import { VotingPanel } from './VotingPanel';
 import { CapsulePanel } from './CapsulePanel';
 import { UpgradePanel } from './UpgradePanel';
 import { ProfilePanel } from './ProfilePanel';
+import { WeeklyRewardsPanel } from './WeeklyRewardsPanel';
+import { WeeklyRewardsAdminPanel } from './WeeklyRewardsAdminPanel';
 
 export function Menu() {
     const enterGate = useGameStore((s) => s.enterGate);
@@ -36,8 +36,8 @@ export function Menu() {
                     <div className="menu-main-actions">
                         {!walletAddress ? (
                             <div className="register-box">
-                                <p className="register-prompt">CONNECT WALLET TO PLAY</p>
-                                <p className="register-note">Each wallet maps to one player profile.</p>
+                                    <p className="register-prompt">RANKED PLAY REQUIRES A REGISTERED WALLET</p>
+                                    <p className="register-note">Every run enters the Celo leaderboard and uses the on-chain ranked ticket flow.</p>
                             </div>
                         ) : !isRegistered ? (
                             <RegisterGate />
@@ -48,13 +48,11 @@ export function Menu() {
                         )}
 
                         {isRegistered && <CheckInButton />}
-                        <button className="btn ghost" onClick={openBoard}>
-                            LEADERBOARD
-                        </button>
+                        <button className="btn ghost" onClick={openBoard}>LEADERBOARD</button>
                     </div>
 
                     <div className="controls">
-                        <span>◀ ▶ / A D — switch lane · SPACE / tap — dash</span>
+                        <span>RANKED ONLY · ◀ ▶ / A D — switch lane · SPACE / tap — dash</span>
                     </div>
                 </section>
 
@@ -63,18 +61,18 @@ export function Menu() {
 
                     {isRegistered ? (
                         <div className="menu-side-stack">
-                            <SeasonPanel />
                             <AchievementsPanel />
                             <ProfilePanel />
+                            <WeeklyRewardsPanel />
+                            <WeeklyRewardsAdminPanel />
                             <ShopPanel />
                             <CapsulePanel />
                             <UpgradePanel />
-                            <VotingPanel />
                         </div>
                     ) : (
                         <div className="menu-tip-card">
                             <span>PLAYER SYSTEMS</span>
-                            <strong>Register to unlock profile, rewards, shop, capsules, seasons and voting.</strong>
+                            <strong>Register to unlock profile, rewards, shop, capsules and weekly competition.</strong>
                         </div>
                     )}
                 </aside>
