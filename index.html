@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8" />
     <!-- CSP (defense-in-depth; full policy incl. frame-ancestors is in public/_headers).
-         When the Railway API is wired, add its origin to connect-src. -->
+         Render API and WalletConnect/AppKit origins are allowed for production. -->
     <meta
         http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self'; font-src 'self'; connect-src 'self' http://localhost:8787 https://api.trybullrush.xyz https://alfajores-forno.celo-testnet.org https://forno.celo.org https://forno.celo-sepolia.celo-testnet.org https://celo-sepolia.g.alchemy.com wss://relay.walletconnect.com https://rpc.walletconnect.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
+        content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self'; font-src 'self'; connect-src 'self' http://localhost:8787 https://api.trybullrush.xyz https://*.onrender.com https://alfajores-forno.celo-testnet.org https://forno.celo.org https://forno.celo-sepolia.celo-testnet.org https://celo-sepolia.g.alchemy.com https://*.walletconnect.com https://*.web3modal.com wss://*.walletconnect.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
     />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <meta
