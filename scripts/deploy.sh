@@ -85,6 +85,16 @@ if [[ "$ENVIRONMENT" != "mainnet" && "$ENVIRONMENT" != "testnet" ]]; then
   exit 1
 fi
 
+if [[ -z "${CUSD_ADDRESS:-}" ]]; then
+  echo "Error: CUSD_ADDRESS must be set to the cUSD contract for the target network." >&2
+  exit 1
+fi
+
+if [[ "$ENVIRONMENT" == "testnet" && -z "${CELO_SEPOLIA_RPC_URL:-}" ]]; then
+  echo "Error: CELO_SEPOLIA_RPC_URL must be set for Celo Sepolia deployments." >&2
+  exit 1
+fi
+
 for bin in forge node openssl; do
   if ! command -v "$bin" >/dev/null 2>&1; then
     echo "Error: required command '$bin' is not installed or not on PATH." >&2
