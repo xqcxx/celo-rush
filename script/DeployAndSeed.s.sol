@@ -7,13 +7,13 @@ import {PlayerRegistry} from "../src/contracts/PlayerRegistry.sol";
 import {CheckIn} from "../src/contracts/CheckIn.sol";
 import {RunRewards} from "../src/contracts/RunRewards.sol";
 import {ArcadeItems} from "../src/contracts/ArcadeItems.sol";
-import {SeasonTrophy} from "../src/contracts/SeasonTrophy.sol";
-import {SeasonManager} from "../src/contracts/SeasonManager.sol";
+import {WeeklyRewardsEscrow} from "../src/contracts/WeeklyRewardsEscrow.sol";
 
 contract DeployAndSeed is Script {
     function run() external {
         uint256 deployerKey = vm.envUint("PRIVATE_KEY");
         address signer = vm.envAddress("AUTHORIZED_SIGNER");
+        address cUSD = vm.envAddress("CUSD_ADDRESS");
         string memory baseUri = vm.envOr("ARCADE_BASE_URI", string("https://api.celorush.xyz/metadata/{id}.json"));
 
         vm.startBroadcast(deployerKey);
@@ -23,12 +23,10 @@ contract DeployAndSeed is Script {
         CheckIn checkIn = new CheckIn(address(rush));
         RunRewards rewards = new RunRewards(address(rush), signer);
         ArcadeItems items = new ArcadeItems(address(rush), baseUri);
-        SeasonTrophy trophy = new SeasonTrophy();
-        SeasonManager seasons = new SeasonManager(address(rush), address(items), address(trophy));
+        WeeklyRewardsEscrow weeklyRewards = new WeeklyRewardsEscrow(cUSD, signer);
 
         rush.setMinter(address(checkIn), true);
         rush.setMinter(address(rewards), true);
-        trophy.setMinter(address(seasons));
 
         // Badge IDs 1-8: non-transferable, no price, one per eligible wallet via voucher.
         for (uint256 i = 0; i < 8; i++) {
@@ -42,13 +40,18 @@ contract DeployAndSeed is Script {
         items.createItem(60 ether, 0, false, 3, 0); // 12 Rugproof Armor
         items.createItem(45 ether, 0, false, 3, 0); // 13 Stablecoin Magnet
 
+        // RunRewards and achievement vouchers are signed by the same backend
+        // account. ArcadeItems validates that account as its Ownable owner.
+        // Transfer ownership after seeding so claims cannot revert because the
+        // deployer and voucher signer are different accounts.
+        items.transferOwnership(signer);
+
         console.log("GameToken", address(rush));
         console.log("PlayerRegistry", address(registry));
         console.log("CheckIn", address(checkIn));
         console.log("RunRewards", address(rewards));
         console.log("ArcadeItems", address(items));
-        console.log("SeasonTrophy", address(trophy));
-        console.log("SeasonManager", address(seasons));
+        console.log("WeeklyRewardsEscrow", address(weeklyRewards));
 
         vm.stopBroadcast();
     }

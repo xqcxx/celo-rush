@@ -60,7 +60,7 @@ export function useCheckIn() {
         query: { enabled: isConnected && !!address },
     });
 
-    const { writeContract, data: txHash, isPending } = useWriteContract();
+    const { writeContract, data: txHash, isPending, error } = useWriteContract();
 
     const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
         hash: txHash,
@@ -90,6 +90,7 @@ export function useCheckIn() {
         isSuccess,
         checkIn,
         checkInTxHash: txHash,
+        error,
         refetch: () => {
             refetchCheckIn();
             refetchStreak();

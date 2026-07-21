@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useGameStore } from '../store';
+import { setPlayerName } from '../api';
+import { useRushBalance } from '../onchain/useRushApproval';
 
 interface PlayerStats {
     total_runs: number;
@@ -14,8 +16,18 @@ interface PlayerStats {
 export function ProfilePanel() {
     const walletAddress = useGameStore((s) => s.walletAddress);
     const isRegistered = useGameStore((s) => s.isRegistered);
+    const playerName = useGameStore((s) => s.playerName);
+    const setStoredPlayerName = useGameStore((s) => s.setPlayerName);
     const [stats, setStats] = useState<PlayerStats | null>(null);
+    const [name, setName] = useState(playerName || '');
+    const [saving, setSaving] = useState(false);
+    const [nameError, setNameError] = useState<string | null>(null);
+    const rushBalance = useRushBalance(walletAddress);
     const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || '';
+
+    useEffect(() => {
+        setName(playerName || '');
+    }, [playerName]);
 
     useEffect(() => {
         if (!BASE || !walletAddress) return;
@@ -27,12 +39,46 @@ export function ProfilePanel() {
 
     if (!walletAddress || !isRegistered || !stats) return null;
 
+    const saveName = async () => {
+        if (!walletAddress || saving) return;
+        setSaving(true);
+        setNameError(null);
+        try {
+            const profile = await setPlayerName(walletAddress, name);
+            setStoredPlayerName(profile.name);
+        } catch (e) {
+            const message = e instanceof Error ? e.message : 'name_failed';
+            setNameError(message === 'name_taken' ? 'NAME ALREADY TAKEN' : 'USE 3-16 LETTERS, NUMBERS, SPACES, _ OR -');
+        } finally {
+            setSaving(false);
+        }
+    };
+
     return (
-        <div className="panel profile-panel">
-            <div className="kicker">PROFILE</div>
+        <details className="panel menu-panel profile-panel">
+            <summary className="panel-summary">PROFILE</summary>
             <div className="profile-wallet">
                 {walletAddress.slice(0, 8)}...{walletAddress.slice(-6)}
             </div>
+            <div className="rush-balance-card">
+                <span>RUSH BALANCE</span>
+                <strong>{rushBalance.isLoading ? '...' : rushBalance.formatted}</strong>
+            </div>
+            <div className="profile-name-row">
+                <input
+                    className="profile-name-input"
+                    value={name}
+                    onChange={(e) => setName(e.target.value.replace(/\s+/g, ' ').slice(0, 16))}
+                    placeholder="Set player name"
+                    maxLength={16}
+                    autoComplete="off"
+                    spellCheck={false}
+                />
+                <button className="btn ghost profile-save" onClick={saveName} disabled={saving || name.trim() === (playerName || '')}>
+                    {saving ? 'SAVING' : 'SAVE'}
+                </button>
+            </div>
+            {nameError && <div className="register-error">{nameError}</div>}
             <div className="profile-stats">
                 <div className="pstat">
                     <span>{stats.total_runs}</span>
@@ -51,6 +97,6 @@ export function ProfilePanel() {
                     <small>Dodged</small>
                 </div>
             </div>
-        </div>
+        </details>
     );
 }

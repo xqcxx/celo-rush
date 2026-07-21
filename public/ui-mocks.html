@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Celo Rush UI Mocks</title>
+  <style>
+    :root {
+      --green: #39ff14;
+      --cyan: #39e6ff;
+      --pink: #ff4fd8;
+      --gold: #ffd34d;
+      --red: #ff4456;
+      --bg: #05070b;
+      --panel: rgba(8, 14, 24, 0.78);
+      --line: rgba(255, 255, 255, 0.12);
+      --font: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      --display: Inter, ui-sans-serif, system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: #edf7ff;
+      background: #020306;
+      font-family: var(--font);
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -2;
+      background: url('/bull-hero.jpg') center / cover no-repeat;
+      filter: saturate(1.2) brightness(0.5);
+    }
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      background:
+        radial-gradient(circle at 15% 10%, rgba(57, 255, 20, 0.22), transparent 26%),
+        radial-gradient(circle at 85% 20%, rgba(255, 79, 216, 0.16), transparent 28%),
+        linear-gradient(180deg, rgba(2, 3, 6, 0.3), rgba(2, 3, 6, 0.9));
+    }
+    a { color: inherit; }
+    .page {
+      width: min(1560px, calc(100vw - 48px));
+      margin: 0 auto;
+      padding: 34px 0 64px;
+    }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 16px 0 22px;
+      backdrop-filter: blur(10px);
+    }
+    .topbar h1 {
+      margin: 0;
+      font-family: var(--display);
+      font-size: clamp(28px, 4vw, 54px);
+      letter-spacing: -0.05em;
+      line-height: 0.94;
+    }
+    .topbar p {
+      max-width: 58ch;
+      margin: 8px 0 0;
+      color: #9fb0c3;
+      line-height: 1.5;
+    }
+    .jump {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .jump a,
+    .pill {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 9px 12px;
+      color: #b8c4d6;
+      text-decoration: none;
+      background: rgba(255, 255, 255, 0.04);
+      font-size: 12px;
+    }
+    .mock {
+      min-height: 720px;
+      margin-top: 30px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 34px;
+      background: rgba(3, 6, 12, 0.72);
+      box-shadow: 0 40px 120px rgba(0, 0, 0, 0.45);
+    }
+    .mock-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 22px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.035);
+    }
+    .mock-title {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+    }
+    .mock-title span {
+      color: var(--green);
+      font-size: 12px;
+      letter-spacing: 0.24em;
+    }
+    .mock-title h2 {
+      margin: 0;
+      font-family: var(--display);
+      font-size: 28px;
+      letter-spacing: -0.04em;
+    }
+    .mock-note {
+      color: #9fb0c3;
+      font-size: 12px;
+    }
+    .screen { min-height: 650px; padding: 24px; }
+    .glass {
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(5, 10, 18, 0.72);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 18px 60px rgba(0, 0, 0, 0.22);
+      backdrop-filter: blur(18px);
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 44px;
+      border: 0;
+      border-radius: 999px;
+      padding: 0 20px;
+      color: #06110a;
+      background: var(--green);
+      font-family: var(--font);
+      font-weight: 900;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .btn.secondary {
+      color: #dbe7f7;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.07);
+    }
+    .metric {
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 18px;
+      padding: 16px;
+      background: rgba(255, 255, 255, 0.045);
+    }
+    .metric span { display: block; color: #7e8da1; font-size: 11px; text-transform: uppercase; letter-spacing: 0.16em; }
+    .metric strong { display: block; margin-top: 8px; color: var(--green); font-size: 28px; }
+    .wallet {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-radius: 18px;
+      padding: 13px 14px;
+    }
+    .wallet small { display: block; color: #8a97aa; text-transform: uppercase; letter-spacing: 0.16em; }
+    .wallet b { display: block; margin-top: 4px; color: #fff; }
+
+    /* Mock 1 */
+    .split-screen {
+      display: grid;
+      grid-template-columns: minmax(420px, 0.9fr) minmax(560px, 1.25fr);
+      gap: 24px;
+      min-height: 650px;
+    }
+    .split-left {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border-radius: 28px;
+      padding: 28px;
+      background: linear-gradient(180deg, rgba(4, 8, 14, 0.5), rgba(4, 8, 14, 0.92)), url('/bull-hero.jpg') 38% center / cover no-repeat;
+    }
+    .split-logo { width: 230px; filter: drop-shadow(0 0 20px rgba(57, 255, 20, 0.5)); }
+    .split-left h3 { max-width: 10ch; margin: 0; font-family: var(--display); font-size: 64px; letter-spacing: -0.08em; line-height: 0.9; }
+    .split-actions { display: grid; gap: 12px; }
+    .split-right { display: grid; grid-template-rows: auto 1fr auto; gap: 16px; }
+    .run-card { border-radius: 28px; padding: 26px; }
+    .run-card h4 { margin: 0 0 12px; font-size: 13px; color: var(--cyan); letter-spacing: 0.2em; }
+    .run-card p { margin: 0; color: #a9b6ca; line-height: 1.6; }
+    .split-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .feed { border-radius: 24px; padding: 20px; }
+    .feed-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); color: #b9c5d4; }
+
+    /* Mock 2 */
+    .dashboard-screen {
+      display: grid;
+      grid-template-columns: 96px 1.3fr 0.9fr;
+      gap: 18px;
+    }
+    .rail {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      align-items: center;
+      border-radius: 26px;
+      padding: 16px;
+    }
+    .rail .dot { width: 56px; height: 56px; display: grid; place-items: center; border-radius: 18px; background: rgba(255,255,255,0.06); color: var(--green); }
+    .command-main { display: grid; grid-template-rows: 1fr auto; gap: 18px; }
+    .map-card {
+      position: relative;
+      overflow: hidden;
+      border-radius: 30px;
+      padding: 30px;
+      background: linear-gradient(145deg, rgba(57,255,20,0.08), rgba(255,79,216,0.08)), url('/bull-hero.jpg') center / cover no-repeat;
+    }
+    .map-card::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(2,4,8,0.78), transparent 70%); }
+    .map-content { position: relative; z-index: 1; max-width: 430px; }
+    .map-content h3 { margin: 0; font-family: var(--display); font-size: 72px; letter-spacing: -0.08em; line-height: 0.88; }
+    .map-content p { color: #b7c4d5; line-height: 1.6; }
+    .dashboard-side { display: grid; gap: 18px; }
+    .side-card { border-radius: 24px; padding: 22px; }
+    .leader-row { display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; padding: 10px 0; color: #ccd7e5; }
+
+    /* Mock 3 */
+    .arcade-screen {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 26px;
+      background: radial-gradient(circle at center, rgba(57,255,20,0.11), transparent 34%);
+    }
+    .cabinet {
+      display: grid;
+      place-items: center;
+      min-height: 600px;
+      border: 2px solid rgba(57,255,20,0.3);
+      border-radius: 38px;
+      background: linear-gradient(180deg, rgba(0,0,0,0.2), rgba(0,0,0,0.7)), url('/bull-hero.jpg') center / cover no-repeat;
+      box-shadow: inset 0 0 80px rgba(57,255,20,0.12), 0 0 60px rgba(57,255,20,0.12);
+    }
+    .cabinet-inner { width: min(560px, 80%); text-align: center; }
+    .cabinet-inner img { width: 280px; }
+    .cabinet-inner h3 { margin: 18px 0; font-size: 13px; color: var(--cyan); letter-spacing: 0.4em; }
+    .arcade-side { display: flex; flex-direction: column; gap: 16px; }
+    .token-card { border-radius: 28px; padding: 24px; }
+    .token-card h4 { margin: 0; color: var(--green); letter-spacing: 0.22em; }
+    .token-card strong { display: block; margin-top: 18px; font-size: 44px; color: #fff; }
+
+    /* Mock 4 */
+    .cards-screen { display: grid; gap: 18px; }
+    .cards-hero {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 24px;
+      align-items: end;
+      min-height: 260px;
+      border-radius: 30px;
+      padding: 30px;
+      background: linear-gradient(100deg, rgba(4,8,14,0.92), rgba(4,8,14,0.4)), url('/bull-hero.jpg') center / cover no-repeat;
+    }
+    .cards-hero h3 { margin: 0; font-family: var(--display); font-size: 58px; letter-spacing: -0.08em; }
+    .card-grid { display: grid; grid-template-columns: 1.2fr 0.8fr 0.8fr; gap: 18px; }
+    .tile { min-height: 190px; border-radius: 26px; padding: 22px; }
+    .tile.big { grid-row: span 2; min-height: 398px; }
+    .tile h4 { margin: 0; color: var(--green); letter-spacing: 0.18em; }
+    .tile p { color: #9fb0c3; line-height: 1.55; }
+
+    /* Mock 5 */
+    .lobby-screen {
+      display: grid;
+      grid-template-columns: 320px 1fr 320px;
+      gap: 18px;
+      min-height: 650px;
+    }
+    .lobby-panel { border-radius: 30px; padding: 22px; }
+    .lobby-center {
+      position: relative;
+      overflow: hidden;
+      border-radius: 36px;
+      padding: 30px;
+      background: linear-gradient(180deg, rgba(4,8,12,0.1), rgba(4,8,12,0.78)), url('/bull-hero.jpg') center / cover no-repeat;
+    }
+    .lobby-center img { width: 260px; }
+    .lobby-bottom { position: absolute; left: 30px; right: 30px; bottom: 30px; display: flex; justify-content: space-between; align-items: end; gap: 20px; }
+    .lobby-bottom h3 { margin: 0; font-family: var(--display); font-size: 70px; letter-spacing: -0.08em; line-height: 0.9; }
+    .nav-list { display: grid; gap: 10px; margin-top: 18px; }
+    .nav-list button { width: 100%; justify-content: flex-start; color: #dce7f6; background: rgba(255,255,255,0.06); border: 1px solid var(--line); }
+
+    @media (max-width: 1100px) {
+      .split-screen, .dashboard-screen, .arcade-screen, .lobby-screen { grid-template-columns: 1fr; }
+      .card-grid { grid-template-columns: 1fr 1fr; }
+      .rail { flex-direction: row; justify-content: center; }
+      .lobby-bottom { position: static; margin-top: 260px; }
+    }
+    @media (max-width: 720px) {
+      .page { width: min(100vw - 24px, 1560px); padding-top: 20px; }
+      .topbar { position: static; align-items: flex-start; flex-direction: column; }
+      .screen { padding: 14px; }
+      .mock { border-radius: 22px; }
+      .mock-head { align-items: flex-start; flex-direction: column; }
+      .split-metrics, .card-grid, .cards-hero { grid-template-columns: 1fr; }
+      .split-left h3, .map-content h3, .cards-hero h3, .lobby-bottom h3 { font-size: 44px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="topbar">
+      <div>
+        <span class="pill">Celo Rush UI exploration</span>
+        <h1>Five desktop layout directions</h1>
+        <p>These are static mocks for choosing a stronger information architecture. The goal is to stop stacking every feature vertically and give desktop users a real dApp/game lobby layout.</p>
+      </div>
+      <nav class="jump">
+        <a href="#mock-1">01 Split</a>
+        <a href="#mock-2">02 Command</a>
+        <a href="#mock-3">03 Arcade</a>
+        <a href="#mock-4">04 Cards</a>
+        <a href="#mock-5">05 Lobby</a>
+      </nav>
+    </header>
+
+    <section id="mock-1" class="mock">
+      <div class="mock-head"><div class="mock-title"><span>01</span><h2>Split Hero + Action Rail</h2></div><div class="mock-note">Best for: immediate play + clear wallet/register path</div></div>
+      <div class="screen split-screen">
+        <aside class="split-left glass">
+          <div><img class="split-logo" src="/logo.png" alt="Celo Rush" /><h3>Run the neon chain.</h3></div>
+          <div class="split-actions"><button class="btn">Enter Gate</button><button class="btn secondary">Leaderboard</button></div>
+        </aside>
+        <section class="split-right">
+          <div class="wallet glass"><div><small>Connected wallet</small><b>0x348E...9FcC7</b></div><button class="btn secondary">Disconnect</button></div>
+          <div class="run-card glass"><h4>PLAYER PROFILE</h4><p>Registration, check-in, and ranked entry live in one focused play panel instead of being scattered down the page.</p><div class="split-metrics" style="margin-top:22px"><div class="metric"><span>Runs</span><strong>12</strong></div><div class="metric"><span>Best</span><strong>4.2k</strong></div><div class="metric"><span>RUSH</span><strong>850</strong></div></div></div>
+          <div class="feed glass"><div class="feed-row"><span>Season 1</span><b>5d left</b></div><div class="feed-row"><span>Daily check-in</span><b>Ready</b></div><div class="feed-row"><span>Achievements</span><b>2 claimable</b></div></div>
+        </section>
+      </div>
+    </section>
+
+    <section id="mock-2" class="mock">
+      <div class="mock-head"><div class="mock-title"><span>02</span><h2>Command Dashboard</h2></div><div class="mock-note">Best for: web3 dashboard feel with persistent navigation</div></div>
+      <div class="screen dashboard-screen">
+        <nav class="rail glass"><div class="dot">RUN</div><div class="dot">NFT</div><div class="dot">DAO</div><div class="dot">LB</div></nav>
+        <section class="command-main"><div class="map-card"><div class="map-content"><img src="/logo.png" width="220" alt="Celo Rush" /><h3>Mission Control</h3><p>Primary actions sit on the hero. Secondary systems move into navigation and side cards.</p><button class="btn">Start Ranked Run</button></div></div><div class="split-metrics"><div class="metric"><span>Streak</span><strong>3</strong></div><div class="metric"><span>Rank</span><strong>#42</strong></div><div class="metric"><span>Badges</span><strong>6</strong></div></div></section>
+        <aside class="dashboard-side"><div class="wallet glass"><div><small>Celo Sepolia</small><b>0x348E...9FcC7</b></div></div><div class="side-card glass"><h4>Leaderboard</h4><div class="leader-row"><span>1</span><b>0xA12...F9</b><span>9,240m</span></div><div class="leader-row"><span>2</span><b>You</b><span>4,220m</span></div><div class="leader-row"><span>3</span><b>0x88...12</b><span>3,900m</span></div></div><div class="side-card glass"><h4>Next rewards</h4><p>Check in, claim badges, and capsule rewards are contextual instead of always visible.</p></div></aside>
+      </div>
+    </section>
+
+    <section id="mock-3" class="mock">
+      <div class="mock-head"><div class="mock-title"><span>03</span><h2>Arcade Cabinet</h2></div><div class="mock-note">Best for: game-first personality</div></div>
+      <div class="screen arcade-screen">
+        <section class="cabinet"><div class="cabinet-inner"><img src="/logo.png" alt="Celo Rush" /><h3>INSERT WALLET TO RUN</h3><button class="btn">Play Now</button></div></section>
+        <aside class="arcade-side"><div class="wallet glass"><div><small>Wallet</small><b>0x348E...9FcC7</b></div><button class="btn secondary">Manage</button></div><div class="token-card glass"><h4>RUSH BALANCE</h4><strong>1,280</strong><p>Enough for ranked entry, upgrades, and one capsule.</p></div><div class="token-card glass"><h4>ARCADE MENU</h4><div class="nav-list"><button class="btn secondary">Leaderboard</button><button class="btn secondary">Cosmetics</button><button class="btn secondary">Capsules</button><button class="btn secondary">Achievements</button></div></div></aside>
+      </div>
+    </section>
+
+    <section id="mock-4" class="mock">
+      <div class="mock-head"><div class="mock-title"><span>04</span><h2>Modular Card Grid</h2></div><div class="mock-note">Best for: many features without vertical chaos</div></div>
+      <div class="screen cards-screen">
+        <div class="cards-hero glass"><div><img src="/logo.png" width="210" alt="Celo Rush" /><h3>Choose your next move.</h3></div><button class="btn">Enter Gate</button></div>
+        <div class="card-grid"><article class="tile big glass"><h4>Run</h4><p>Casual and ranked modes, last result, reward claim state, and registration all live here.</p><button class="btn">Start</button></article><article class="tile glass"><h4>Wallet</h4><p>Connected to Celo Sepolia.</p></article><article class="tile glass"><h4>Daily</h4><p>Check in for +10 RUSH.</p></article><article class="tile glass"><h4>Shop</h4><p>Cosmetics and upgrades.</p></article><article class="tile glass"><h4>Season</h4><p>Voting and trophies.</p></article></div>
+      </div>
+    </section>
+
+    <section id="mock-5" class="mock">
+      <div class="mock-head"><div class="mock-title"><span>05</span><h2>Cinematic Lobby</h2></div><div class="mock-note">Best for: polished desktop landing with side panels</div></div>
+      <div class="screen lobby-screen">
+        <aside class="lobby-panel glass"><h4>Player</h4><div class="metric"><span>Wallet</span><strong style="font-size:20px">0x348E...</strong></div><div class="metric" style="margin-top:12px"><span>Best</span><strong>4,220m</strong></div><div class="nav-list"><button class="btn secondary">Profile</button><button class="btn secondary">Badges</button><button class="btn secondary">Shop</button></div></aside>
+        <section class="lobby-center"><img src="/logo.png" alt="Celo Rush" /><div class="lobby-bottom"><h3>Neon city awaits.</h3><button class="btn">Enter Gate</button></div></section>
+        <aside class="lobby-panel glass"><h4>Live Chain</h4><div class="feed-row"><span>Check-in</span><b>Ready</b></div><div class="feed-row"><span>Season</span><b>Open</b></div><div class="feed-row"><span>Votes</span><b>2 active</b></div><div class="feed-row"><span>Capsule</span><b>25 RUSH</b></div><button class="btn secondary" style="width:100%; margin-top:18px">Leaderboard</button></aside>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,30 +1,33 @@
 import { useEffect, useRef, useState } from 'react';
 import { useGameStore, refs } from '../store';
 import { storage } from '../storage';
-import { submitRun, shareLink, claimRunReward, type RewardVoucher } from '../api';
+import { startRun, submitRun, shareLink, claimRunReward } from '../api';
 import { useClaimReward } from '../onchain/useClaimReward';
 
 export function GameOverScreen() {
     const result = useGameStore((s) => s.result);
-    const start = useGameStore((s) => s.start);
     const reset = useGameStore((s) => s.reset);
     const openBoard = useGameStore((s) => s.openBoard);
     const walletAddress = useGameStore((s) => s.walletAddress);
-    const gameMode = useGameStore((s) => s.gameMode);
+    const playerName = useGameStore((s) => s.playerName);
     const gameRunId = useGameStore((s) => s.gameRunId);
     const setGameRunId = useGameStore((s) => s.setGameRunId);
+    const setActiveRunState = useGameStore((s) => s.setActiveRunState);
 
-    const { claimReward, isPending: claimingTx, isConfirming: claimConfirming, isSuccess: claimSuccess, isError: claimError } = useClaimReward();
+    const { claimReward, isPending: claimingTx, isConfirming: claimConfirming, isSuccess: claimSuccess, isError: claimError, txHash } = useClaimReward();
 
     const [name, setName] = useState(() => storage.name() || '');
     const [globalPos, setGlobalPos] = useState<number | null>(null);
-    const [voucher, setVoucher] = useState<RewardVoucher | null>(null);
     const [claimStarted, setClaimStarted] = useState(false);
+    const [claimVoucherError, setClaimVoucherError] = useState<string | null>(null);
+    const [submitError, setSubmitError] = useState<string | null>(null);
+    const [submittedRun, setSubmittedRun] = useState(false);
     const localId = useRef<string | null>(null);
     const submitted = useRef(false);
+    const submittedResult = useRef(false);
 
     const displayName = walletAddress
-        ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
+        ? playerName || `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
         : (name || '').trim() || 'ANON';
 
     const onName = (v: string) => {
@@ -34,41 +37,88 @@ export function GameOverScreen() {
         if (localId.current) storage.rename(localId.current, clean || 'ANON');
     };
 
-    const commit = () => {
-        if (submitted.current || !result) return;
-        submitted.current = true;
-        const finalName = walletAddress || (name || '').trim() || 'ANON';
-        if (localId.current) storage.rename(localId.current, finalName);
-        if (refs.token) {
-            void submitRun({
-                token: refs.token,
-                name: finalName,
-                distance: result.distance,
-                score: result.score,
-                durationMs: result.durationMs,
-                deathCause: result.cause,
-                wallet: walletAddress || undefined,
-                gameMode,
-                runId: gameRunId,
-                ref: storage.ref() || undefined,
-            }).then((res) => {
-                if (res && res.position) setGlobalPos(res.position);
-            });
+    const commit = async (): Promise<boolean> => {
+        if (submitted.current) return submittedRun;
+        if (!result) return false;
+        if (!walletAddress) {
+            setSubmitError('CONNECT AND REGISTER A WALLET BEFORE STARTING A RANKED RUN.');
+            return false;
         }
+        if (!refs.token) {
+            try {
+                const prepared = await startRun(walletAddress, 'ranked', gameRunId);
+                refs.token = prepared.token;
+            } catch {
+                // The result remains retryable when the API recovers.
+            }
+            if (!refs.token) {
+                setSubmitError('RANKED RUN TOKEN MISSING. RETRY SUBMISSION OR START A NEW RUN.');
+                return false;
+            }
+        }
+        submitted.current = true;
+        setActiveRunState('submitting');
+        const finalName = walletAddress ? displayName : (name || '').trim() || 'ANON';
+        if (localId.current) storage.rename(localId.current, finalName);
+        setSubmitError(null);
+        const res = await submitRun({
+            token: refs.token,
+            name: finalName,
+            distance: result.distance,
+            score: result.score,
+            durationMs: result.durationMs,
+            deathCause: result.cause,
+            wallet: walletAddress || undefined,
+            gameMode: 'ranked',
+            runId: gameRunId,
+            ref: storage.ref() || undefined,
+            jeetsDodged: result.jeetsDodged,
+            snipersSurvived: result.snipersSurvived,
+            mevAvoided: result.mevAvoided,
+            damageTaken: result.damageTaken,
+            maxCombo: result.maxCombo,
+        });
+        if (!res) {
+            submitted.current = false;
+            setActiveRunState('failed');
+            setSubmitError('RUN SUBMIT FAILED. CHECK BACKEND LOGS, THEN RETRY CLAIM.');
+            return false;
+        }
+        setSubmittedRun(true);
+        submittedResult.current = true;
+        setActiveRunState('submitted');
+        if (res.position) setGlobalPos(res.position);
+        if (res.hidden) setSubmitError('RUN SUBMITTED BUT FLAGGED BY ANTI-CHEAT; REWARD CLAIM IS DISABLED.');
+        return !res.hidden;
     };
 
     const handleClaim = async () => {
         if (!result || !walletAddress || !gameRunId) return;
         setClaimStarted(true);
-        const v = await claimRunReward(gameRunId, result.score, walletAddress);
-        if (v) {
-            setVoucher(v);
+        setClaimVoucherError(null);
+        if (submitted.current && !submittedResult.current) {
+            for (let attempt = 0; attempt < 30 && submitted.current && !submittedResult.current; attempt++) {
+                await new Promise((resolve) => window.setTimeout(resolve, 500));
+            }
+        }
+        const submissionReady = await commit();
+        if (!submissionReady) {
+            setClaimStarted(false);
+            setClaimVoucherError('REWARD VOUCHER NOT READY BECAUSE THE RUN DID NOT SUBMIT.');
+            return;
+        }
+        try {
+            const v = await claimRunReward(gameRunId, result.score, walletAddress);
+            if (!v) throw new Error('reward_voucher_empty');
             claimReward(v);
+        } catch (e) {
+            setClaimStarted(false);
+            setClaimVoucherError(e instanceof Error ? e.message : 'REWARD VOUCHER NOT READY.');
         }
     };
 
     const act = (fn: () => void) => () => {
-        commit();
+        void commit();
         fn();
     };
 
@@ -89,24 +139,40 @@ Can you survive the Celo neon city?
     };
 
     const runItBack = () => {
-        commit();
+        void commit();
         setGameRunId(null);
-        start();
+        setActiveRunState(null);
+        reset();
+        window.setTimeout(() => useGameStore.getState().enterGate(), 0);
     };
 
     useEffect(() => {
         if (!result || localId.current) return;
         const e = storage.add({ name: displayName, distance: result.distance, score: result.score, rank: result.rank, at: Date.now() });
         localId.current = e.id;
-        const t = window.setTimeout(commit, 8000);
+        const t = window.setTimeout(() => { void commit(); }, 8000);
         return () => clearTimeout(t);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [result]);
 
+    useEffect(() => {
+        if (!claimSuccess || !txHash || !walletAddress || !gameRunId) return;
+        const base = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || '';
+        if (!base) return;
+        void fetch(`${base}/api/run/claim/confirm`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ runId: gameRunId, wallet: walletAddress, txHash }),
+        }).catch(() => {});
+    }, [claimSuccess, txHash, walletAddress, gameRunId]);
+
+    useEffect(() => {
+        if (claimError) setClaimStarted(false);
+    }, [claimError]);
+
     if (!result) return null;
 
-    const isRanked = gameMode === 'ranked';
-    const estimatedReward = isRanked ? Math.max(1, Math.floor(result.score / 10)) : 0;
+    const estimatedReward = Math.max(1, Math.floor(result.score / 10));
     const claimDone = claimSuccess;
 
     return (
@@ -114,7 +180,7 @@ Can you survive the Celo neon city?
             <div className="panel">
                 <div className="death">{result.cause}</div>
                 <div className="charged">
-                    <span>{isRanked ? 'RANKED RUN' : 'YOU CHARGED'}</span>
+                    <span>RANKED RUN</span>
                     <strong>{result.distance.toLocaleString()} m</strong>
                 </div>
                 <div className="stats">
@@ -128,12 +194,15 @@ Can you survive the Celo neon city?
                     </div>
                 </div>
                 {globalPos && <div className="globalrank">GLOBAL&nbsp;#{globalPos.toLocaleString()}</div>}
+                {submitError && <div className="register-error">{submitError}</div>}
+                {!submittedRun && <button className="btn ghost" onClick={() => { void commit(); }}>RETRY LEADERBOARD SUBMISSION</button>}
 
-                {isRanked && !claimStarted && (
+                {!claimStarted && (
                     <button className="btn primary" onClick={handleClaim}>
                         CLAIM ~{estimatedReward} RUSH ▸
                     </button>
                 )}
+                {claimVoucherError && <div className="register-error">{claimVoucherError}</div>}
 
                 {claimingTx && <div className="register-status">CONFIRM IN WALLET...</div>}
                 {claimConfirming && <div className="register-status">CLAIMING REWARD...</div>}
@@ -142,7 +211,7 @@ Can you survive the Celo neon city?
 
                 {walletAddress ? (
                     <div className="namebox">
-                        <label className="namelabel">WALLET</label>
+                        <label className="namelabel">PLAYER</label>
                         <div className="nameinput" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             {displayName}
                         </div>

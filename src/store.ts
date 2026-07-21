@@ -51,8 +51,12 @@ export const refs = {
     distance: 0,
     shield: false,
     cloudUntil: 0,
-    seed: '',
     token: null as string | null,
+    jeetsDodged: 0,
+    snipersSurvived: 0,
+    mevAvoided: 0,
+    damageTaken: 0,
+    maxCombo: 0,
 };
 
 export function resetRefs(): void {
@@ -67,9 +71,12 @@ export function resetRefs(): void {
     refs.distance = 0;
     refs.shield = false;
     refs.cloudUntil = 0;
-    // seed/token are set by the API on run start; cleared here
-    refs.seed = '';
-    refs.token = null;
+    // The backend token is deliberately retained until submission succeeds.
+    refs.jeetsDodged = 0;
+    refs.snipersSurvived = 0;
+    refs.mevAvoided = 0;
+    refs.damageTaken = 0;
+    refs.maxCombo = 0;
 }
 
 export function laneFromX(x: number): number {
@@ -77,6 +84,7 @@ export function laneFromX(x: number): number {
 }
 
 export type Phase = 'intro' | 'menu' | 'gate' | 'playing' | 'dead' | 'board';
+export type ActiveRunState = 'starting' | 'active' | 'submitting' | 'submitted' | 'failed' | null;
 
 export interface RunResult {
     distance: number;
@@ -84,6 +92,11 @@ export interface RunResult {
     cause: string;
     rank: string;
     durationMs: number;
+    jeetsDodged: number;
+    snipersSurvived: number;
+    mevAvoided: number;
+    damageTaken: number;
+    maxCombo: number;
 }
 
 interface GameState {
@@ -101,9 +114,13 @@ interface GameState {
     muted: boolean;
     musicMode: number;
     walletAddress: string | null;
+    playerName: string | null;
     isRegistered: boolean;
-    gameMode: 'casual' | 'ranked';
     gameRunId: string | null;
+    activeRunState: ActiveRunState;
+    equippedSkinId: number | null;
+    equippedTrailId: number | null;
+    cosmeticLevels: Record<number, number>;
 
     finishIntro: () => void;
     triggerCloud: () => void;
@@ -123,9 +140,13 @@ interface GameState {
     damage: (amount: number, cause: string) => void;
     die: (cause: string) => void;
     setWalletAddress: (addr: string | null) => void;
+    setPlayerName: (name: string | null) => void;
     setRegistered: (v: boolean) => void;
-    setGameMode: (mode: 'casual' | 'ranked') => void;
     setGameRunId: (id: string | null) => void;
+    setActiveRunState: (state: ActiveRunState) => void;
+    equipSkin: (id: number | null) => void;
+    equipTrail: (id: number | null) => void;
+    setCosmeticLevels: (levels: Record<number, number>) => void;
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -143,9 +164,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     muted: false,
     musicMode: storage.musicMode(),
     walletAddress: null,
+    playerName: null,
     isRegistered: false,
-    gameMode: 'casual',
     gameRunId: null,
+    activeRunState: null,
+    equippedSkinId: storage.equippedSkin(),
+    equippedTrailId: storage.equippedTrail(),
+    cosmeticLevels: {},
 
     finishIntro: () => {
         storage.setIntroSeen();
@@ -168,7 +193,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const state = get();
         if (!state.walletAddress || !state.isRegistered) return;
         resetRefs();
-        set((s) => ({ phase: 'playing', hearts: HEALTH_MAX, score: 0, dist: 0, dashPct: 1, shield: false, combo: 0, result: null, runId: s.runId + 1 }));
+        set((s) => ({ phase: 'playing', hearts: HEALTH_MAX, score: 0, dist: 0, dashPct: 1, shield: false, combo: 0, result: null, runId: s.runId + 1, activeRunState: 'active' }));
     },
     reset: () => set({ phase: 'menu', result: null }),
     flashHit: () => set((s) => ({ flashKey: s.flashKey + 1 })),
@@ -179,7 +204,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         set({ shield: on });
     },
     addScore: (n) => set((s) => ({ score: s.score + n })),
-    addCombo: () => set((s) => ({ combo: s.combo + 1 })),
+    addCombo: () => set((s) => { const combo = s.combo + 1; refs.maxCombo = Math.max(refs.maxCombo, combo); return { combo }; }),
     resetCombo: () => set({ combo: 0 }),
     heal: () => set((s) => ({ hearts: Math.min(HEALTH_MAX, s.hearts + 1) })),
     damage: (amount, cause) => {
@@ -188,6 +213,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             get().die(cause);
             set({ hearts: 0 });
         } else {
+            refs.damageTaken += amount;
             set({ hearts: next, combo: 0 });
         }
     },
@@ -196,11 +222,21 @@ export const useGameStore = create<GameState>((set, get) => ({
         const distance = Math.floor(refs.distance);
         set({
             phase: 'dead',
-            result: { distance, score: Math.floor(get().score), cause, rank: rankFor(distance), durationMs: Math.floor(refs.elapsed * 1000) },
+            result: { distance, score: Math.floor(get().score), cause, rank: rankFor(distance), durationMs: Math.floor(refs.elapsed * 1000), jeetsDodged: refs.jeetsDodged, snipersSurvived: refs.snipersSurvived, mevAvoided: refs.mevAvoided, damageTaken: refs.damageTaken, maxCombo: refs.maxCombo },
         });
     },
-    setWalletAddress: (addr) => set({ walletAddress: addr }),
+    setWalletAddress: (addr) => set(addr ? { walletAddress: addr } : { walletAddress: null, isRegistered: false }),
+    setPlayerName: (name) => set({ playerName: name }),
     setRegistered: (v) => set({ isRegistered: v }),
-    setGameMode: (mode) => set({ gameMode: mode }),
     setGameRunId: (id) => set({ gameRunId: id }),
+    setActiveRunState: (activeRunState) => set({ activeRunState }),
+    equipSkin: (id) => {
+        storage.setEquippedSkin(id);
+        set({ equippedSkinId: id });
+    },
+    equipTrail: (id) => {
+        storage.setEquippedTrail(id);
+        set({ equippedTrailId: id });
+    },
+    setCosmeticLevels: (levels) => set({ cosmeticLevels: levels }),
 }));

@@ -1,4 +1,4 @@
-import { sql } from './db.ts';
+import { db } from './db.ts';
 
 export interface AchievementDef {
     id: number;
@@ -23,19 +23,13 @@ export async function getPlayerAchievements(wallet: string): Promise<{ earned: n
 
     if (!wallet) return { earned, claimable };
 
-    const claimed = await sql`SELECT badge_id FROM achievement_claims WHERE wallet = ${wallet}`;
+    const claimed = await db.listAchievementClaims(wallet);
     const claimedSet = new Set(claimed.map((r: any) => r.badge_id));
 
-    const stats = await sql`
-        SELECT
-            (SELECT COUNT(*) FROM runs WHERE wallet = ${wallet}) as total_runs,
-            (SELECT MAX(distance) FROM runs WHERE wallet = ${wallet}) as best_distance,
-            (SELECT COALESCE(SUM(distance), 0) FROM runs WHERE wallet = ${wallet}) as lifetime_distance,
-            (SELECT MAX(jeets_dodged) FROM runs WHERE wallet = ${wallet}) as max_jeets_dodged,
-            (SELECT COALESCE(SUM(jeets_dodged), 0) FROM runs WHERE wallet = ${wallet}) as total_jeets_dodged,
-            (SELECT COUNT(*) FROM runs WHERE wallet = ${wallet} AND death_cause = 'Clean run') as clean_runs
-    ` as any[];
-    const s = stats[0] || { total_runs: 0, best_distance: 0, lifetime_distance: 0, total_jeets_dodged: 0, clean_runs: 0 };
+    const s = await db.achievementStats(wallet);
+    const currentWeek = Math.floor(Date.now() / 604800000);
+    const weekly = await db.weeklyEligibility(currentWeek, 100);
+    const weeklyEntry = weekly.find((entry) => entry.wallet === wallet);
 
     for (const ach of ACHIEVEMENTS) {
         if (claimedSet.has(ach.id)) {
@@ -44,14 +38,14 @@ export async function getPlayerAchievements(wallet: string): Promise<{ earned: n
         }
         let eligible = false;
         switch (ach.id) {
-            case 1: eligible = Number(s.total_runs) >= 1; break;
+            case 1: eligible = Number(s.ranked_runs) >= 1; break;
             case 2: eligible = Number(s.best_distance) >= 1000; break;
             case 3: eligible = Number(s.best_distance) >= 5000; break;
             case 4: eligible = Number(s.lifetime_distance) >= 10000; break;
             case 5: eligible = Number(s.clean_runs) >= 1; break;
             case 6: eligible = Number(s.total_jeets_dodged) >= 100; break;
-            case 7: eligible = false; break; // weekly check handled separately
-            case 8: eligible = false; break;
+            case 7: eligible = !!weeklyEntry; break;
+            case 8: eligible = !!weeklyEntry && weeklyEntry.position <= 10; break;
         }
         if (eligible) claimable.push(ach.id);
     }

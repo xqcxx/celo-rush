@@ -6,6 +6,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "vite",
+    "dau": "node scripts/dau.mjs",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview"
@@ -24,10 +25,11 @@
     "zustand": "^5.0.9"
   },
   "devDependencies": {
+    "@faker-js/faker": "^10.5.0",
     "@types/howler": "^2.2.13",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
-    "@types/three": "^0.182.0",
+    "@types/three": "^0.179.0",
     "@vitejs/plugin-react": "^5.0.0",
     "terser": "^5.39.0",
     "typescript": "~5.7.2",

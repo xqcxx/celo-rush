@@ -2,18 +2,21 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas';
 import { createPublicClient, getAddress, http, isAddress } from 'viem';
-import { celo, celoAlfajores } from 'viem/chains';
-import { sql, initSchema } from './db.ts';
-import { redis, LB, rateLimit, recordScore, topScores } from './redis.ts';
+import { celo, celoSepolia } from 'viem/chains';
+import { db, initSchema } from './db.ts';
+import { redis, rateLimit } from './redis.ts';
 import { rankFor } from './ranks.ts';
-import { computeReward, signVoucher, signBadgeVoucher, signCapsuleVoucher, signerConfigured } from './signer.ts';
+import { computeReward, signVoucher, signBadgeVoucher, signCapsuleVoucher, signWeeklyRequest, signerConfigured } from './signer.ts';
 import { getPlayerAchievements, isBadgeEligible, ACHIEVEMENTS } from './achievements.ts';
+import { assertServerEnvironment } from './config.ts';
+
+assertServerEnvironment();
 
 // Must mirror the game's MAX_SPEED for the anti-cheat plausibility gate.
 const MAX_SPEED = 64;
@@ -31,7 +34,9 @@ const app = new Hono();
 const CHAIN_ID = Number(process.env.CELO_CHAIN_ID || 44787);
 const CELO_RPC_URL = process.env.CELO_RPC_URL || 'https://alfajores-forno.celo-testnet.org';
 const PLAYER_REGISTRY_ADDRESS = process.env.PLAYER_REGISTRY_CONTRACT_ADDRESS;
-const SEASON_MANAGER_ADDRESS = process.env.SEASON_MANAGER_CONTRACT_ADDRESS;
+const RUN_REWARDS_ADDRESS = process.env.RUN_REWARDS_CONTRACT_ADDRESS;
+const ARCADE_ITEMS_ADDRESS = process.env.ARCADE_ITEMS_CONTRACT_ADDRESS;
+const WEEKLY_REWARDS_ADDRESS = process.env.WEEKLY_REWARDS_CONTRACT_ADDRESS;
 
 const PLAYER_REGISTRY_ABI = [
     {
@@ -43,31 +48,18 @@ const PLAYER_REGISTRY_ABI = [
     },
 ] as const;
 
-const SEASON_MANAGER_ABI = [
-    {
-        type: 'function',
-        name: 'hasEntered',
-        inputs: [
-            { name: 'seasonId', type: 'uint256' },
-            { name: 'player', type: 'address' },
-        ],
-        outputs: [{ type: 'bool' }],
-        stateMutability: 'view',
-    },
-    {
-        type: 'function',
-        name: 'hasVoted',
-        inputs: [
-            { name: 'proposalId', type: 'uint256' },
-            { name: 'voter', type: 'address' },
-        ],
-        outputs: [{ type: 'bool' }],
-        stateMutability: 'view',
-    },
+const RUN_REWARDS_ABI = [
+    { type: 'function', name: 'claimedRuns', inputs: [{ name: 'runId', type: 'bytes32' }], outputs: [{ type: 'bool' }], stateMutability: 'view' },
+    { type: 'function', name: 'runPlayer', inputs: [{ name: 'runId', type: 'bytes32' }], outputs: [{ type: 'address' }], stateMutability: 'view' },
+] as const;
+const ARCADE_ITEMS_ABI = [{ type: 'function', name: 'balanceOf', inputs: [{ name: 'account', type: 'address' }, { name: 'id', type: 'uint256' }], outputs: [{ type: 'uint256' }], stateMutability: 'view' }] as const;
+const WEEKLY_REWARDS_ABI = [
+    { type: 'function', name: 'currentWeek', inputs: [], outputs: [{ type: 'uint256' }], stateMutability: 'view' },
+    { type: 'function', name: 'rewards', inputs: [{ name: 'week', type: 'uint256' }, { name: 'player', type: 'address' }], outputs: [{ name: 'requested', type: 'bool' }, { name: 'withdrawn', type: 'bool' }, { name: 'approvedAmount', type: 'uint256' }], stateMutability: 'view' },
 ] as const;
 
 const publicClient = createPublicClient({
-    chain: CHAIN_ID === celo.id ? celo : celoAlfajores,
+    chain: CHAIN_ID === celo.id ? celo : celoSepolia,
     transport: http(CELO_RPC_URL),
 });
 
@@ -85,16 +77,30 @@ const ipOf = (c: { req: { header: (k: string) => string | undefined } }) =>
     c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip') || 'anon';
 
 app.get('/', (c) => c.text('BULL RUSH API — charge.'));
-app.get('/health', (c) => c.json({ ok: true }));
+app.get('/health', (c) => c.json({ ok: true, chainId: CHAIN_ID, ready: true }));
 
 function normalizeWallet(raw: unknown): string | null {
     if (typeof raw !== 'string' || !isAddress(raw)) return null;
     return getAddress(raw).toLowerCase();
 }
 
+function shortWallet(wallet: string): string {
+    return `${wallet.slice(0, 6)}...${wallet.slice(-4)}`;
+}
+
+function cleanPlayerName(raw: unknown): { name: string; key: string } | null {
+    if (typeof raw !== 'string') return null;
+    const name = raw.replace(/[^\x20-\x7E]/g, '').replace(/\s+/g, ' ').trim();
+    if (name.length < 3 || name.length > 16) return null;
+    if (!/^[A-Za-z0-9][A-Za-z0-9 _-]*[A-Za-z0-9]$/.test(name)) return null;
+    const key = name.toLowerCase();
+    if (['anon', 'admin', 'celo', 'rush', 'celo rush', 'bull rush'].includes(key)) return null;
+    return { name, key };
+}
+
 async function isPlayerRegistered(wallet: string): Promise<boolean> {
-    const rows = await sql`SELECT wallet FROM players WHERE wallet = ${wallet}`;
-    if (rows.length > 0) return true;
+    const existing = await db.findPlayer(wallet);
+    if (existing) return true;
 
     if (!PLAYER_REGISTRY_ADDRESS || !isAddress(PLAYER_REGISTRY_ADDRESS)) return false;
 
@@ -106,43 +112,23 @@ async function isPlayerRegistered(wallet: string): Promise<boolean> {
     });
 
     if (onChain) {
-        await sql`INSERT INTO players (wallet) VALUES (${wallet}) ON CONFLICT (wallet) DO NOTHING`;
+        await db.ensurePlayer(wallet);
     }
 
     return onChain;
-}
-
-async function seasonEnteredOnChain(seasonId: number, wallet: string): Promise<boolean> {
-    if (!SEASON_MANAGER_ADDRESS || !isAddress(SEASON_MANAGER_ADDRESS)) return false;
-    return publicClient.readContract({
-        address: getAddress(SEASON_MANAGER_ADDRESS),
-        abi: SEASON_MANAGER_ABI,
-        functionName: 'hasEntered',
-        args: [BigInt(seasonId), getAddress(wallet)],
-    });
-}
-
-async function proposalVotedOnChain(proposalId: number, wallet: string): Promise<boolean> {
-    if (!SEASON_MANAGER_ADDRESS || !isAddress(SEASON_MANAGER_ADDRESS)) return false;
-    return publicClient.readContract({
-        address: getAddress(SEASON_MANAGER_ADDRESS),
-        abi: SEASON_MANAGER_ABI,
-        functionName: 'hasVoted',
-        args: [BigInt(proposalId), getAddress(wallet)],
-    });
 }
 
 app.get('/api/players/:wallet', async (c) => {
     const wallet = normalizeWallet(c.req.param('wallet'));
     if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
 
-    const rows = await sql`SELECT wallet, registered_at FROM players WHERE wallet = ${wallet}`;
-    if (rows.length === 0) {
+    const player = await db.findPlayer(wallet);
+    if (!player) {
         const registered = await isPlayerRegistered(wallet);
-        return c.json({ registered });
+        return c.json({ registered, wallet: registered ? wallet : undefined, name: null });
     }
 
-    return c.json({ registered: true, wallet: rows[0].wallet, registeredAt: rows[0].registered_at });
+    return c.json({ registered: true, wallet: player.wallet, name: player.name ?? null, registeredAt: player.registered_at });
 });
 
 app.post('/api/players/register', async (c) => {
@@ -153,18 +139,35 @@ app.post('/api/players/register', async (c) => {
     const wallet = normalizeWallet(body?.wallet);
     if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
 
-    const existing = await sql`SELECT wallet FROM players WHERE wallet = ${wallet}`;
-    if (existing.length > 0) return c.json({ registered: true, wallet });
+    if (await db.findPlayer(wallet)) return c.json({ registered: true, wallet });
 
     if (!(await isPlayerRegistered(wallet))) return c.json({ error: 'not_registered_onchain' }, 400);
 
-    await sql`INSERT INTO players (wallet) VALUES (${wallet}) ON CONFLICT (wallet) DO NOTHING`;
+    await db.ensurePlayer(wallet);
     return c.json({ registered: true, wallet });
+});
+
+app.post('/api/players/:wallet/name', async (c) => {
+    const ip = ipOf(c);
+    if (!(await rateLimit(ip, 'player-name', 12, 60))) return c.json({ error: 'rate_limited' }, 429);
+
+    const wallet = normalizeWallet(c.req.param('wallet'));
+    if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
+    if (!(await isPlayerRegistered(wallet))) return c.json({ error: 'player_not_registered' }, 403);
+
+    const body = await c.req.json().catch(() => null);
+    const cleaned = cleanPlayerName(body?.name);
+    if (!cleaned) return c.json({ error: 'invalid_name' }, 400);
+
+    if (await db.findPlayerByNameKey(cleaned.key, wallet)) return c.json({ error: 'name_taken' }, 409);
+
+    await db.updatePlayerName(wallet, cleaned.name, cleaned.key);
+    return c.json({ registered: true, wallet, name: cleaned.name });
 });
 
 const StartRunSchema = z.object({
     wallet: z.string(),
-    gameMode: z.enum(['casual', 'ranked']).default('casual'),
+    gameMode: z.literal('ranked'),
     runId: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
 });
 
@@ -177,17 +180,20 @@ app.post('/api/run/start', async (c) => {
     const wallet = normalizeWallet(parsed.data.wallet);
     if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
     if (!(await isPlayerRegistered(wallet))) return c.json({ error: 'player_not_registered' }, 403);
-    if (parsed.data.gameMode === 'ranked' && !parsed.data.runId) return c.json({ error: 'run_id_required' }, 400);
+    if (!parsed.data.runId) return c.json({ error: 'run_id_required' }, 400);
+    if (RUN_REWARDS_ADDRESS && isAddress(RUN_REWARDS_ADDRESS)) {
+        const onChainPlayer = await publicClient.readContract({ address: getAddress(RUN_REWARDS_ADDRESS), abi: RUN_REWARDS_ABI, functionName: 'runPlayer', args: [parsed.data.runId as `0x${string}`] });
+        if (onChainPlayer.toLowerCase() !== wallet) return c.json({ error: 'ranked_run_not_started_onchain' }, 409);
+    }
 
     const token = randomUUID();
-    const seed = randomBytes(16).toString('hex');
     await redis.set(
         `seed:${token}`,
-        JSON.stringify({ seed, t: Date.now(), ip, wallet, gameMode: parsed.data.gameMode, runId: parsed.data.runId ?? null }),
+        JSON.stringify({ t: Date.now(), ip, wallet, gameMode: parsed.data.gameMode, runId: parsed.data.runId ?? null }),
         'EX',
-        180,
+        7200,
     );
-    return c.json({ seed, token });
+    return c.json({ token });
 });
 
 const SubmitSchema = z.object({
@@ -204,8 +210,9 @@ const SubmitSchema = z.object({
     snipersSurvived: z.number().int().min(0).max(100_000).optional(),
     mevAvoided: z.number().int().min(0).max(100_000).optional(),
     maxCombo: z.number().int().min(0).max(100_000).optional(),
+    damageTaken: z.number().int().min(0).max(100_000).optional(),
     wallet: z.string(),
-    gameMode: z.enum(['casual', 'ranked']).default('casual'),
+    gameMode: z.literal('ranked'),
     runId: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
     ref: z.string().regex(/^[A-Za-z0-9_-]{1,24}$/).optional(),
 });
@@ -221,13 +228,20 @@ app.post('/api/run/submit', async (c) => {
     if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
     if (!(await isPlayerRegistered(wallet))) return c.json({ error: 'player_not_registered' }, 403);
 
-    // one-time token: must exist (issued by /run/start, not yet used)
-    const stored = await redis.getdel(`seed:${b.token}`);
+    // Keep the token until the database write succeeds. This makes a retry
+    // safe across transient Mongo/API failures.
+    const stored = await redis.get(`seed:${b.token}`);
     if (!stored) return c.json({ error: 'invalid_token' }, 400);
-    const runMeta = JSON.parse(stored) as { wallet?: string; gameMode?: 'casual' | 'ranked'; runId?: string | null };
+    const runMeta = JSON.parse(stored) as { wallet?: string; gameMode?: 'ranked'; runId?: string | null };
     if (runMeta.wallet !== wallet) return c.json({ error: 'wallet_token_mismatch' }, 400);
     if (runMeta.gameMode !== b.gameMode) return c.json({ error: 'game_mode_mismatch' }, 400);
-    if (b.gameMode === 'ranked' && (!b.runId || runMeta.runId !== b.runId)) return c.json({ error: 'run_id_mismatch' }, 400);
+    if (!b.runId || runMeta.runId !== b.runId) return c.json({ error: 'run_id_mismatch' }, 400);
+
+    const prior = await db.findRunByToken(b.token);
+    if (prior) {
+        const position = await db.getBestPosition(wallet);
+        return c.json({ ok: true, rank: prior.rank, position, hidden: prior.suspicious });
+    }
 
     // anti-cheat plausibility gate
     const sec = b.durationMs / 1000;
@@ -240,32 +254,45 @@ app.post('/api/run/submit', async (c) => {
 
     const id = randomUUID();
     const rank = rankFor(b.distance);
+    const player = await db.findPlayer(wallet);
+    const playerName = typeof player?.name === 'string' && player.name ? player.name : shortWallet(wallet);
 
-    await sql`INSERT INTO runs ${sql({
-        id,
-        name: b.name,
-        distance: b.distance,
-        score: b.score,
-        rank,
-        death_cause: b.deathCause ?? null,
-        jeets_dodged: b.jeetsDodged ?? 0,
-        snipers_survived: b.snipersSurvived ?? 0,
-        mev_avoided: b.mevAvoided ?? 0,
-        max_combo: b.maxCombo ?? 0,
-        duration_ms: b.durationMs,
-        wallet,
-        run_id: b.runId ?? null,
-        game_mode: b.gameMode,
-        referrer: b.ref ?? null,
-        suspicious,
-    })}`;
+    try {
+        await db.insertRun({
+            id,
+            token: b.token,
+            name: playerName,
+            distance: b.distance,
+            score: b.score,
+            rank,
+            death_cause: b.deathCause ?? null,
+            jeets_dodged: b.jeetsDodged ?? 0,
+            snipers_survived: b.snipersSurvived ?? 0,
+            mev_avoided: b.mevAvoided ?? 0,
+            max_combo: b.maxCombo ?? 0,
+            damage_taken: b.damageTaken ?? 0,
+            duration_ms: b.durationMs,
+            wallet,
+            run_id: b.runId ?? null,
+            game_mode: b.gameMode,
+            referrer: b.ref ?? null,
+            suspicious,
+            reward_claimed: false,
+            created_at: new Date(),
+        });
+    } catch (error) {
+        if ((error as { code?: number }).code === 11000) {
+            const duplicate = await db.findRunByToken(b.token);
+            if (duplicate) return c.json({ ok: true, rank: duplicate.rank, position: await db.getBestPosition(wallet), hidden: duplicate.suspicious });
+        }
+        throw error;
+    }
+    await redis.del(`seed:${b.token}`);
 
     if (suspicious) return c.json({ ok: true, hidden: true, rank });
 
-    const member = JSON.stringify({ n: b.name, r: rank, id });
-    await recordScore(member, b.distance, b.ref);
-    const position = await redis.zrevrank(LB.alltime, member);
-    return c.json({ ok: true, rank, position: position === null ? null : position + 1 });
+    const position = await db.getBestPosition(wallet);
+    return c.json({ ok: true, rank, position });
 });
 
 const ClaimVoucherSchema = z.object({
@@ -286,13 +313,11 @@ app.post('/api/run/claim', async (c) => {
     if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
     if (!(await isPlayerRegistered(wallet))) return c.json({ error: 'player_not_registered' }, 403);
 
-    const runs = await sql`
-        SELECT id, score, suspicious, reward_claimed FROM runs
-        WHERE wallet = ${wallet} AND run_id = ${b.runId} AND game_mode = 'ranked'
-        ORDER BY created_at DESC LIMIT 1
-    `;
-    if (runs.length === 0) return c.json({ error: 'ranked_run_not_found' }, 404);
-    const run = runs[0] as { id: string; score: number; suspicious: boolean; reward_claimed: boolean };
+    const run = await db.findRankedRun(wallet, b.runId);
+    if (!run) return c.json({ error: 'ranked_run_not_found' }, 404);
+    if (!RUN_REWARDS_ADDRESS || !isAddress(RUN_REWARDS_ADDRESS)) return c.json({ error: 'run_rewards_not_configured' }, 503);
+    const onChainPlayer = await publicClient.readContract({ address: getAddress(RUN_REWARDS_ADDRESS), abi: RUN_REWARDS_ABI, functionName: 'runPlayer', args: [b.runId as `0x${string}`] });
+    if (onChainPlayer.toLowerCase() !== wallet) return c.json({ error: 'ranked_run_owner_mismatch' }, 409);
     if (run.suspicious) return c.json({ error: 'suspicious_run' }, 400);
     if (run.reward_claimed) return c.json({ error: 'already_claimed' }, 400);
     if (Number(run.score) !== b.score) return c.json({ error: 'score_mismatch' }, 400);
@@ -305,9 +330,29 @@ app.post('/api/run/claim', async (c) => {
         rewardAmount,
     });
 
-    await sql`UPDATE runs SET reward_claimed = true WHERE id = ${run.id}`;
+    // Issuing a voucher is not a claim. The contract's claimedRuns mapping is
+    // the replay protection; a rejected or expired transaction must be retryable.
+    await db.markVoucherIssued(run.id);
 
     return c.json(voucher);
+});
+
+const ClaimConfirmSchema = z.object({ runId: z.string().regex(/^0x[a-fA-F0-9]{64}$/), wallet: z.string(), txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/) });
+
+app.post('/api/run/claim/confirm', async (c) => {
+    const parsed = ClaimConfirmSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success || !RUN_REWARDS_ADDRESS || !isAddress(RUN_REWARDS_ADDRESS)) return c.json({ error: 'bad_request' }, 400);
+    const wallet = normalizeWallet(parsed.data.wallet);
+    if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
+    const run = await db.findRankedRun(wallet, parsed.data.runId);
+    if (!run) return c.json({ error: 'ranked_run_not_found' }, 404);
+    const receipt = await publicClient.getTransactionReceipt({ hash: parsed.data.txHash as `0x${string}` });
+    if (receipt.status !== 'success') return c.json({ error: 'claim_transaction_failed' }, 400);
+    if (!receipt.to || receipt.to.toLowerCase() !== getAddress(RUN_REWARDS_ADDRESS).toLowerCase() || receipt.from.toLowerCase() !== wallet) return c.json({ error: 'claim_transaction_mismatch' }, 400);
+    const claimed = await publicClient.readContract({ address: getAddress(RUN_REWARDS_ADDRESS), abi: RUN_REWARDS_ABI, functionName: 'claimedRuns', args: [parsed.data.runId as `0x${string}`] });
+    if (!claimed) return c.json({ error: 'claim_not_confirmed' }, 409);
+    await db.markRewardClaimed(run.id);
+    return c.json({ ok: true });
 });
 
 app.get('/api/achievements/:wallet', async (c) => {
@@ -333,8 +378,7 @@ app.post('/api/achievements/claim', async (c) => {
 
     if (!(await isBadgeEligible(wallet, badgeId))) return c.json({ error: 'not_eligible' }, 400);
 
-    const existing = await sql`SELECT badge_id FROM achievement_claims WHERE wallet = ${wallet} AND badge_id = ${badgeId}`;
-    if (existing.length > 0) return c.json({ error: 'already_claimed' }, 400);
+    if (await db.findAchievementClaim(wallet, badgeId)) return c.json({ error: 'already_claimed' }, 400);
 
     const voucher = await signBadgeVoucher(badgeId, wallet);
     return c.json(voucher);
@@ -344,93 +388,17 @@ app.post('/api/achievements/sync', async (c) => {
     const body = await c.req.json().catch(() => null);
     const wallet = normalizeWallet(body?.wallet);
     const badgeId = Number(body?.badgeId || 0);
-    if (!wallet || badgeId < 1) return c.json({ error: 'bad_request' }, 400);
+    const txHash = typeof body?.txHash === 'string' && /^0x[a-fA-F0-9]{64}$/.test(body.txHash) ? body.txHash as `0x${string}` : null;
+    if (!wallet || badgeId < 1 || !txHash || !ARCADE_ITEMS_ADDRESS || !isAddress(ARCADE_ITEMS_ADDRESS)) return c.json({ error: 'bad_request' }, 400);
 
-    await sql`INSERT INTO achievement_claims (wallet, badge_id) VALUES (${wallet}, ${badgeId}) ON CONFLICT (wallet, badge_id) DO NOTHING`;
+    const receipt = await publicClient.getTransactionReceipt({ hash: txHash });
+    if (receipt.status !== 'success') return c.json({ error: 'badge_transaction_failed' }, 400);
+    if (!receipt.to || receipt.to.toLowerCase() !== getAddress(ARCADE_ITEMS_ADDRESS).toLowerCase() || receipt.from.toLowerCase() !== wallet) return c.json({ error: 'badge_transaction_mismatch' }, 400);
+    const balance = await publicClient.readContract({ address: getAddress(ARCADE_ITEMS_ADDRESS), abi: ARCADE_ITEMS_ABI, functionName: 'balanceOf', args: [getAddress(wallet), BigInt(badgeId)] });
+    if (balance === 0n) return c.json({ error: 'badge_not_minted' }, 409);
+
+    await db.insertAchievementClaim(wallet, badgeId);
     return c.json({ ok: true });
-});
-
-app.get('/api/seasons/current', async (c) => {
-    const now = new Date().toISOString();
-    const rows = await sql`
-        SELECT id, start_time, end_time, finalized FROM seasons
-        WHERE start_time <= ${now} AND end_time >= ${now}
-        ORDER BY id DESC LIMIT 1
-    `;
-    if (rows.length === 0) return c.json({ season: null });
-    return c.json({ season: rows[0] });
-});
-
-app.get('/api/seasons/all', async (c) => {
-    const rows = await sql`SELECT id, start_time, end_time, finalized FROM seasons ORDER BY id DESC LIMIT 10`;
-    return c.json({ seasons: rows });
-});
-
-app.post('/api/seasons/enter', async (c) => {
-    const ip = ipOf(c);
-    if (!(await rateLimit(ip, 'season', 10, 60))) return c.json({ error: 'rate_limited' }, 429);
-
-    const body = await c.req.json().catch(() => null);
-    const wallet = normalizeWallet(body?.wallet);
-    const seasonId = Number(body?.seasonId || 0);
-    if (!wallet || seasonId < 1) return c.json({ error: 'bad_request' }, 400);
-
-    const existing = await sql`SELECT wallet FROM season_entries WHERE season_id = ${seasonId} AND wallet = ${wallet}`;
-    if (existing.length > 0) return c.json({ entered: true, seasonId });
-
-    if (!(await seasonEnteredOnChain(seasonId, wallet))) return c.json({ error: 'not_entered_onchain' }, 400);
-
-    await sql`INSERT INTO season_entries (season_id, wallet) VALUES (${seasonId}, ${wallet})`;
-    return c.json({ entered: true, seasonId });
-});
-
-app.get('/api/seasons/:seasonId/hasEntered/:wallet', async (c) => {
-    const wallet = normalizeWallet(c.req.param('wallet'));
-    const seasonId = Number(c.req.param('seasonId'));
-    if (!wallet || !seasonId) return c.json({ error: 'invalid' }, 400);
-
-    const rows = await sql`SELECT wallet FROM season_entries WHERE season_id = ${seasonId} AND wallet = ${wallet}`;
-    return c.json({ entered: rows.length > 0 });
-});
-
-app.get('/api/proposals/active', async (c) => {
-    const now = new Date().toISOString();
-    const rows = await sql`SELECT id, season_id, description, options, end_time FROM proposals WHERE end_time >= ${now} ORDER BY id DESC LIMIT 10`;
-    const result = await Promise.all(rows.map(async (p: any) => {
-        const votes = await sql`SELECT option_id, COUNT(*) as count FROM votes WHERE proposal_id = ${p.id} GROUP BY option_id`;
-        const voteCounts = new Array(p.options.length).fill(0);
-        for (const v of votes) voteCounts[Number(v.option_id)] = Number(v.count);
-        return { id: p.id, seasonId: p.season_id, description: p.description, options: p.options, voteCounts, endTime: p.end_time };
-    }));
-    return c.json(result);
-});
-
-app.post('/api/proposals/vote', async (c) => {
-    const ip = ipOf(c);
-    if (!(await rateLimit(ip, 'vote', 20, 60))) return c.json({ error: 'rate_limited' }, 429);
-
-    const body = await c.req.json().catch(() => null);
-    const wallet = normalizeWallet(body?.wallet);
-    const proposalId = Number(body?.proposalId || 0);
-    const optionId = Number(body?.optionId || -1);
-    if (!wallet || !proposalId || optionId < 0) return c.json({ error: 'bad_request' }, 400);
-
-    const existing = await sql`SELECT wallet FROM votes WHERE proposal_id = ${proposalId} AND wallet = ${wallet}`;
-    if (existing.length > 0) return c.json({ error: 'already_voted' }, 400);
-
-    if (!(await proposalVotedOnChain(proposalId, wallet))) return c.json({ error: 'not_voted_onchain' }, 400);
-
-    await sql`INSERT INTO votes (proposal_id, wallet, option_id) VALUES (${proposalId}, ${wallet}, ${optionId})`;
-    return c.json({ ok: true });
-});
-
-app.get('/api/proposals/:id/vote/:wallet', async (c) => {
-    const wallet = normalizeWallet(c.req.param('wallet'));
-    const proposalId = Number(c.req.param('id'));
-    if (!wallet || !proposalId) return c.json({ error: 'invalid' }, 400);
-
-    const rows = await sql`SELECT option_id FROM votes WHERE proposal_id = ${proposalId} AND wallet = ${wallet}`;
-    return c.json({ voted: rows.length > 0, optionId: rows.length > 0 ? Number(rows[0].option_id) : null });
 });
 
 app.post('/api/capsules/open', async (c) => {
@@ -456,31 +424,103 @@ app.get('/api/players/:wallet/stats', async (c) => {
     const wallet = normalizeWallet(c.req.param('wallet'));
     if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
 
-    const rows = await sql`
-        SELECT
-            COUNT(*) as total_runs,
-            COALESCE(MAX(distance), 0) as best_distance,
-            COALESCE(SUM(distance), 0) as lifetime_distance,
-            COALESCE(SUM(score), 0) as total_score,
-            COALESCE(MAX(score), 0) as best_score,
-            COALESCE(SUM(jeets_dodged), 0) as total_jeets_dodged,
-            COALESCE(SUM(snipers_survived), 0) as total_snipers_survived,
-            COALESCE(SUM(mev_avoided), 0) as total_mev_avoided,
-            COUNT(CASE WHEN suspicious = false THEN 1 END) as valid_runs
-        FROM runs WHERE wallet = ${wallet}
-    `;
-    const stats = rows[0] || { total_runs: 0, best_distance: 0, lifetime_distance: 0, total_score: 0, best_score: 0, total_jeets_dodged: 0, total_snipers_survived: 0, total_mev_avoided: 0, valid_runs: 0 };
-    return c.json(stats);
+    return c.json(await db.playerStats(wallet));
 });
 
 app.get('/api/leaderboard', async (c) => {
     const period = c.req.query('period') || 'alltime';
     const squad = c.req.query('squad');
     const limit = Math.min(Number(c.req.query('limit') || 100), 200);
-    const key = squad ? LB.squad(squad) : period === 'daily' ? LB.daily() : period === 'weekly' ? LB.weekly() : LB.alltime;
-    const entries = await topScores(key, limit);
+    const validPeriod = period === 'daily' || period === 'weekly' ? period : 'alltime';
+    const validSquad = squad && /^[A-Za-z0-9_-]{1,24}$/.test(squad) ? squad : undefined;
+    const entries = await db.leaderboard(validPeriod, validSquad, limit);
     c.header('Cache-Control', 'public, s-maxage=10, stale-while-revalidate=30');
-    return c.json({ period: squad ? `squad:${squad}` : period, entries });
+    return c.json({ period: validSquad ? `squad:${validSquad}` : validPeriod, entries });
+});
+
+app.get('/api/weekly/:week', async (c) => {
+    const week = Number(c.req.param('week'));
+    if (!Number.isInteger(week) || week < 0) return c.json({ error: 'invalid_week' }, 400);
+    const entries = await db.weeklyEligibility(week, 100);
+    return c.json({ week, minimumGames: Math.max(1, Number(process.env.WEEKLY_MIN_RANKED_GAMES || 1)), entries });
+});
+
+const WeeklyRequestSchema = z.object({ wallet: z.string(), week: z.number().int().nonnegative() });
+
+async function weeklyRewardState(week: number, wallet: string): Promise<{ requested: boolean; withdrawn: boolean; approvedAmount: bigint }> {
+    if (!WEEKLY_REWARDS_ADDRESS || !isAddress(WEEKLY_REWARDS_ADDRESS)) return { requested: false, withdrawn: false, approvedAmount: 0n };
+    const state = await publicClient.readContract({
+        address: getAddress(WEEKLY_REWARDS_ADDRESS),
+        abi: WEEKLY_REWARDS_ABI,
+        functionName: 'rewards',
+        args: [BigInt(week), getAddress(wallet)],
+    });
+    return { requested: state[0], withdrawn: state[1], approvedAmount: state[2] };
+}
+
+app.post('/api/weekly/request', async (c) => {
+    if (!signerConfigured()) return c.json({ error: 'signer_not_configured' }, 503);
+    const parsed = WeeklyRequestSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: 'bad_request' }, 400);
+    const wallet = normalizeWallet(parsed.data.wallet);
+    if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
+    const currentWeek = Math.floor(Date.now() / 604800000);
+    if (parsed.data.week >= currentWeek) return c.json({ error: 'week_not_closed' }, 400);
+    if (!(await isPlayerRegistered(wallet))) return c.json({ error: 'player_not_registered' }, 403);
+
+    const winner = (await db.weeklyEligibility(parsed.data.week, 1))[0];
+    if (!winner || winner.wallet !== wallet) return c.json({ error: 'not_weekly_winner' }, 403);
+
+    const state = await weeklyRewardState(parsed.data.week, wallet);
+    if (state.requested) return c.json({ error: 'already_requested' }, 409);
+
+    const voucher = await signWeeklyRequest(wallet, parsed.data.week);
+    return c.json({ ...voucher, position: winner.position, games: winner.games, distance: winner.distance, score: winner.score });
+});
+
+const WeeklySyncSchema = z.object({ wallet: z.string(), week: z.number().int().nonnegative(), txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/) });
+
+app.post('/api/weekly/request/sync', async (c) => {
+    const parsed = WeeklySyncSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success || !WEEKLY_REWARDS_ADDRESS || !isAddress(WEEKLY_REWARDS_ADDRESS)) return c.json({ error: 'bad_request' }, 400);
+    const wallet = normalizeWallet(parsed.data.wallet);
+    if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
+    const receipt = await publicClient.getTransactionReceipt({ hash: parsed.data.txHash as `0x${string}` });
+    if (receipt.status !== 'success') return c.json({ error: 'request_transaction_failed' }, 400);
+    if (!receipt.to || receipt.to.toLowerCase() !== getAddress(WEEKLY_REWARDS_ADDRESS).toLowerCase() || receipt.from.toLowerCase() !== wallet) return c.json({ error: 'request_transaction_mismatch' }, 400);
+    const winner = (await db.weeklyEligibility(parsed.data.week, 1))[0];
+    if (!winner || winner.wallet !== wallet) return c.json({ error: 'not_weekly_winner' }, 403);
+    const state = await weeklyRewardState(parsed.data.week, wallet);
+    if (!state.requested) return c.json({ error: 'request_not_confirmed' }, 409);
+    await db.insertWeeklyRequest(parsed.data.week, wallet, parsed.data.txHash);
+    return c.json({ ok: true });
+});
+
+app.get('/api/weekly/requests', async (c) => {
+    const currentWeek = Math.floor(Date.now() / 604800000);
+    const requests = await db.listWeeklyRequests();
+    const result = [];
+    for (const request of requests) {
+        const winner = (await db.weeklyEligibility(request.week, 1))[0];
+        const state = await weeklyRewardState(request.week, request.wallet);
+        result.push({ ...request, currentWeek, position: winner?.position ?? null, games: winner?.games ?? 0, distance: winner?.distance ?? 0, score: winner?.score ?? 0, requested: state.requested, withdrawn: state.withdrawn, approvedAmount: state.approvedAmount.toString() });
+    }
+    return c.json({ requests: result });
+});
+
+app.get('/api/weekly/history/:wallet', async (c) => {
+    const wallet = normalizeWallet(c.req.param('wallet'));
+    if (!wallet) return c.json({ error: 'invalid_wallet' }, 400);
+    const currentWeek = Math.floor(Date.now() / 604800000);
+    const history = [];
+    for (const week of await db.walletWeeks(wallet)) {
+        if (week >= currentWeek) continue;
+        const entry = (await db.weeklyEligibility(week, 100)).find((row) => row.wallet === wallet);
+        if (!entry) continue;
+        const state = await weeklyRewardState(week, wallet);
+        history.push({ ...entry, requested: state.requested, withdrawn: state.withdrawn, approvedAmount: state.approvedAmount.toString(), canRequest: entry.position === 1 && !state.requested });
+    }
+    return c.json({ minimumGames: Math.max(1, Number(process.env.WEEKLY_MIN_RANKED_GAMES || 1)), history });
 });
 
 // Dynamic OG share card — the bull image with this run's score burned in.

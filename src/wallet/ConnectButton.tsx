@@ -1,39 +1,65 @@
 import { useWallet } from './useWallet';
+import { chainDisplayName } from './provider';
+import { useRushBalance } from '../onchain/useRushApproval';
 
 export function ConnectButton() {
-    const { isConnected, isConnecting, shortAddress, inMiniPay, connect, disconnect, isCorrectChain, switchToCelo } = useWallet();
+    const { address, isConnected, isConnecting, shortAddress, inMiniPay, connect, disconnect, isCorrectChain, switchToCelo } = useWallet();
+    const chainName = chainDisplayName();
+    const rushBalance = useRushBalance(address);
+
+    if (inMiniPay) return null;
 
     if (isConnecting) {
-        if (inMiniPay) return null;
         return (
-            <button className="btn wallet-btn connecting" disabled>
-                CONNECTING...
-            </button>
+            <div className="wallet-card">
+                <div className="wallet-copy">
+                    <span>Wallet</span>
+                    <strong>Connecting...</strong>
+                </div>
+                <button className="wallet-action connecting" disabled>
+                    Connecting
+                </button>
+            </div>
         );
     }
 
     if (isConnected && !isCorrectChain) {
         return (
-            <button className="btn wallet-btn wrong-chain" onClick={switchToCelo}>
-                SWITCH TO CELO
-            </button>
+            <div className="wallet-card wrong-chain">
+                <div className="wallet-copy">
+                    <span>Wrong network</span>
+                    <strong>{shortAddress}</strong>
+                </div>
+                <button className="wallet-action wrong-chain" onClick={switchToCelo}>
+                    Switch to {chainName}
+                </button>
+            </div>
         );
     }
 
     if (isConnected) {
-        const connectedEl = (
-            <button className="btn wallet-btn connected" onClick={disconnect}>
-                {shortAddress}
-            </button>
+        return (
+            <div className="wallet-card connected">
+                <div className="wallet-copy">
+                    <span>Connected to {chainName}</span>
+                    <strong>{shortAddress} · {rushBalance.isLoading ? '...' : rushBalance.formatted} RUSH</strong>
+                </div>
+                <button className="wallet-action secondary" onClick={disconnect}>
+                    Disconnect
+                </button>
+            </div>
         );
-        return connectedEl;
     }
 
-    if (inMiniPay) return null;
-
     return (
-        <button className="btn wallet-btn" onClick={connect}>
-            CONNECT WALLET
-        </button>
+        <div className="wallet-card">
+            <div className="wallet-copy">
+                <span>Wallet required</span>
+                <strong>Connect to play</strong>
+            </div>
+            <button className="wallet-action" onClick={connect}>
+                Connect Wallet
+            </button>
+        </div>
     );
 }

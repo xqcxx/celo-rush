@@ -7,7 +7,9 @@
   },
   "scripts": {
     "start": "node --env-file .env --import tsx/esm src/index.ts",
-    "dev": "node --env-file .env --import tsx/esm --watch src/index.ts",
+    "dev": "node --env-file .env scripts/dev-with-signer-key.mjs",
+    "dev:plain": "node --env-file .env --import tsx/esm --watch src/index.ts",
+    "signer:init": "node --env-file .env scripts/dev-with-signer-key.mjs --init-only",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -15,7 +17,7 @@
     "@napi-rs/canvas": "^0.1.100",
     "hono": "^4.6.14",
     "ioredis": "^5.4.2",
-    "postgres": "^3.4.5",
+    "mongodb": "^6.12.0",
     "tsx": "^4.19.2",
     "viem": "^2.54.3",
     "zod": "^3.24.1"

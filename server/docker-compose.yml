@@ -1,15 +1,11 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: bullrush-pg
-    environment:
-      POSTGRES_USER: bullrush
-      POSTGRES_PASSWORD: bullrush
-      POSTGRES_DB: bullrush
+  mongodb:
+    image: mongo:7
+    container_name: bullrush-mongo
     ports:
-      - "5432:5432"
+      - "27017:27017"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - mongodata:/data/db
 
   redis:
     image: redis:7-alpine
@@ -18,4 +14,4 @@ services:
       - "6379:6379"
 
 volumes:
-  pgdata:
+  mongodata:

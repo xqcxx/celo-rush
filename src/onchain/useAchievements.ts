@@ -36,7 +36,7 @@ export function useAchievements(walletAddress: string | null) {
     const [claimable, setClaimable] = useState<number[]>([]);
     const [definitions, setDefinitions] = useState<Achievement[]>([]);
     const chainId = getChainId();
-    const { writeContract, data: txHash, isPending } = useWriteContract();
+    const { writeContract, data: txHash, isPending, error: writeError } = useWriteContract();
     const { isLoading: isConfirming, isSuccess, isError } = useWaitForTransactionReceipt({ hash: txHash });
     const [pendingBadgeId, setPendingBadgeId] = useState<number | null>(null);
 
@@ -64,13 +64,22 @@ export function useAchievements(walletAddress: string | null) {
 
     useEffect(() => {
         if (!isSuccess || !BASE || !walletAddress || pendingBadgeId === null) return;
-        fetch(`${BASE}/api/achievements/sync`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ wallet: walletAddress, badgeId: pendingBadgeId }),
-        })
-            .then(() => fetchAchievements())
-            .catch(() => {});
+        let cancelled = false;
+        const sync = async () => {
+            for (let attempt = 0; attempt < 3 && !cancelled; attempt++) {
+                try {
+                    const response = await fetch(`${BASE}/api/achievements/sync`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ wallet: walletAddress, badgeId: pendingBadgeId, txHash }),
+                    });
+                    if (response.ok) { await fetchAchievements(); return; }
+                } catch { /* retry after a short outage */ }
+                await new Promise((resolve) => window.setTimeout(resolve, 1000 * (attempt + 1)));
+            }
+        };
+        void sync();
+        return () => { cancelled = true; };
     }, [isSuccess, BASE, walletAddress, pendingBadgeId, fetchAchievements]);
 
     const claimBadge = useCallback(async (badgeId: number) => {
@@ -104,6 +113,7 @@ export function useAchievements(walletAddress: string | null) {
         isConfirming,
         isSuccess,
         isError,
+        error: writeError,
         refetch: fetchAchievements,
         getName,
         getDesc,

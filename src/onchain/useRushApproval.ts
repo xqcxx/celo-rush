@@ -1,9 +1,16 @@
 import { useReadContract, useWaitForTransactionReceipt, useWriteContract } from 'wagmi';
-import { parseUnits } from 'viem';
-import { useCallback } from 'react';
+import { formatUnits, parseUnits } from 'viem';
+import { useCallback, useEffect } from 'react';
 import { getChainId } from '../wallet/provider';
 
 const ERC20_ABI = [
+    {
+        type: 'function',
+        name: 'balanceOf',
+        inputs: [{ name: 'account', type: 'address' }],
+        outputs: [{ type: 'uint256' }],
+        stateMutability: 'view',
+    },
     {
         type: 'function',
         name: 'allowance',
@@ -32,6 +39,28 @@ export function rush(amount: number): bigint {
     return parseUnits(String(amount), 18);
 }
 
+export function formatRush(balance: bigint | undefined): string {
+    if (typeof balance !== 'bigint') return '0';
+    const formatted = formatUnits(balance, 18);
+    const [whole, decimals = ''] = formatted.split('.');
+    const shortDecimals = decimals.slice(0, 2).replace(/0+$/, '');
+    return shortDecimals ? `${whole}.${shortDecimals}` : whole;
+}
+
+export function useRushBalance(owner: string | null | undefined) {
+    const chainId = getChainId();
+    const { data: balance, refetch, isLoading } = useReadContract({
+        address: RUSH_TOKEN_ADDRESS,
+        abi: ERC20_ABI,
+        functionName: 'balanceOf',
+        args: owner ? [owner as `0x${string}`] : undefined,
+        chainId,
+        query: { enabled: !!owner, refetchInterval: 10_000 },
+    });
+
+    return { balance, formatted: formatRush(balance), refetch, isLoading };
+}
+
 export function useRushApproval(owner: string | null | undefined, spender: `0x${string}`, amount: bigint) {
     const chainId = getChainId();
     const { data: allowance, refetch } = useReadContract({
@@ -43,7 +72,7 @@ export function useRushApproval(owner: string | null | undefined, spender: `0x${
         query: { enabled: !!owner && amount > 0n },
     });
     const { writeContract, data: hash, isPending } = useWriteContract();
-    const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+    const { isLoading: isConfirming, isSuccess, isError: receiptError } = useWaitForTransactionReceipt({ hash });
 
     const hasAllowance = typeof allowance === 'bigint' && allowance >= amount;
 
@@ -57,5 +86,9 @@ export function useRushApproval(owner: string | null | undefined, spender: `0x${
         });
     }, [writeContract, spender, amount, chainId]);
 
-    return { allowance, hasAllowance, approve, isPending, isConfirming, isSuccess, refetch };
+    useEffect(() => {
+        if (isSuccess) void refetch();
+    }, [isSuccess, refetch]);
+
+    return { allowance, hasAllowance, approve, isPending, isConfirming, isSuccess, isError: receiptError, refetch };
 }
