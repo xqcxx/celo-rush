@@ -556,7 +556,9 @@ async function runAutoplayerWallet({ cfg, chain, publicClient, mnemonic, index, 
     console.log('  register: already registered');
   }
   await apiJson(cfg.apiUrl, '/api/players/register', { wallet: address });
-  await apiJson(cfg.apiUrl, `/api/players/${address}/name`, { name: playerName(opts.names, index) }).catch((e) => console.log(`  name: ${e.message}`));
+  const generatedName = playerName(opts.names, index);
+  await apiJson(cfg.apiUrl, `/api/players/${address}/name`, { name: generatedName });
+  console.log(`  name: ${generatedName}`);
 
   const checkedIn = await publicClient.readContract({ address: cfg.checkIn, abi: CONTRACTS.checkIn, functionName: 'hasCheckedInToday', args: [address] }).catch(() => false);
   if (!checkedIn) {
@@ -586,7 +588,7 @@ async function runAutoplayerWallet({ cfg, chain, publicClient, mnemonic, index, 
   const stats = makeRunStats(index, opts.outcome);
   const submitted = await apiJson(cfg.apiUrl, '/api/run/submit', {
     token: started.token,
-    name: playerName(opts.names, index),
+    name: generatedName,
     wallet: address,
     gameMode: 'ranked',
     runId,
