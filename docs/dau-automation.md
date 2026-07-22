@@ -24,6 +24,7 @@ The full ranked autoplayer profile is:
 9. Request a reward voucher from the backend.
 10. Claim the ranked reward on-chain.
 11. Confirm the successful claim receipt with the backend so the database records the claim.
+12. Fetch and claim any currently eligible achievements, then sync each successful badge receipt.
 
 ## Setup
 
@@ -64,6 +65,11 @@ npm run dau -- help
 ## Encrypted Interaction Mnemonic
 
 The first time you run the script for an environment, it asks you to paste a mnemonic and set an encryption password.
+
+The mnemonic is encrypted with AES-256-GCM and saved with mode `0600`. Later runs
+prompt only for the password. The script never reads private keys from a plaintext
+file, command-line argument, or environment variable; derived private keys exist
+only in process memory long enough to sign a transaction and are never printed.
 
 Encrypted files are stored at:
 
@@ -141,6 +147,20 @@ Run full ranked autoplayer users for wallets `0..49` on testnet:
 ```bash
 npm run dau -- run --env testnet --mode autoplayer --start 0 --end 49
 ```
+
+Choose generated outcomes explicitly:
+
+```bash
+npm run dau -- run --env testnet --mode autoplayer --outcome win --start 0 --end 9
+npm run dau -- run --env testnet --mode autoplayer --outcome lose --start 10 --end 19
+npm run dau -- run --env testnet --mode autoplayer --outcome random --start 20 --end 29
+```
+
+Each wallet receives a deterministic Faker-generated human-like name. `win` runs
+reach roughly 6K meters and can unlock distance and clean-run achievements;
+`lose` runs remain plausible but stay below the 1K threshold. After every run,
+the script fetches claimable badges and completes the backend voucher, on-chain
+mint, and receipt-confirmation flow for each eligible badge.
 
 Run slowly and serially by default. Increase concurrency carefully:
 

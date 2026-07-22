@@ -48,6 +48,9 @@ const CONTRACTS = {
     ], outputs: [], stateMutability: 'nonpayable' },
     { type: 'function', name: 'hasFreeTicket', inputs: [{ name: 'player', type: 'address' }], outputs: [{ type: 'bool' }], stateMutability: 'view' },
   ],
+  arcadeItems: [
+    { type: 'function', name: 'mintAchievementBadge', inputs: [{ name: 'badgeId', type: 'uint256' }, { name: 'deadline', type: 'uint256' }, { name: 'signature', type: 'bytes' }], outputs: [], stateMutability: 'nonpayable' },
+  ],
   rush: [
     { type: 'function', name: 'balanceOf', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'uint256' }], stateMutability: 'view' },
     { type: 'function', name: 'allowance', inputs: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }], outputs: [{ type: 'uint256' }], stateMutability: 'view' },
@@ -79,6 +82,7 @@ Options:
   --api-url <url>             Override VITE_API_URL from .env.
   --rpc-url <url>             Override VITE_CELO_RPC_URL from .env.
   --env-file <path>           Override the env file selected for the target network.
+  --outcome win|lose|random   Generated run outcome. Default random.
   --margin <n>                Recommended funding multiplier. Default ${DEFAULT_MARGIN}.
   --names <namespace>         Deterministic human-like name namespace. Default rush.
   --concurrency <n>           Run concurrency. Default ${DEFAULT_CONCURRENCY}.
@@ -112,6 +116,8 @@ function parseArgs(argv) {
   if (!['estimate', 'run'].includes(opts.command)) throw new Error('command must be estimate or run');
   if (!['testnet', 'mainnet'].includes(opts.env || '')) throw new Error('--env testnet|mainnet is required');
   opts.mode = opts.mode || (opts.group === 'autoplayer' ? 'autoplayer' : 'checkin');
+  opts.outcome = opts.outcome || 'random';
+  if (!['win', 'lose', 'random'].includes(opts.outcome)) throw new Error('--outcome must be win, lose, or random');
   if (!['checkin', 'autoplayer', 'both'].includes(opts.mode)) throw new Error('--mode must be checkin, autoplayer, or both');
   if (opts.command === 'run' && opts.mode === 'both') throw new Error('--mode both is for estimate only; run checkin and autoplayer separately');
   opts.count = toOptionalInt(opts.count, 'count');
@@ -181,6 +187,7 @@ function loadConfig(opts) {
     playerRegistry: env.VITE_PLAYER_REGISTRY_CONTRACT_ADDRESS,
     checkIn: env.VITE_CHECKIN_CONTRACT_ADDRESS,
     runRewards: env.VITE_RUN_REWARDS_CONTRACT_ADDRESS,
+    arcadeItems: env.VITE_ARCADE_ITEMS_CONTRACT_ADDRESS,
   };
   const source = envPath ? path.relative(ROOT, envPath) : 'process environment';
   for (const [key, value] of Object.entries(cfg)) {
@@ -293,11 +300,19 @@ function playerName(namespace, index) {
   return name;
 }
 
-function makeRunStats(index) {
-  const durationMs = 55_000 + (index % 11) * 1_000;
-  const distance = 1700 + (index % 17) * 73;
+function makeRunStats(index, requestedOutcome) {
+  const outcome = requestedOutcome === 'random'
+    ? (crypto.randomInt(0, 2) === 0 ? 'win' : 'lose')
+    : requestedOutcome;
+  const durationMs = outcome === 'win'
+    ? 120_000 + (index % 11) * 1_000
+    : 10_000 + (index % 5) * 1_000;
+  const distance = outcome === 'win'
+    ? 6_000 + (index % 17) * 73
+    : 400 + (index % 9) * 35;
   const score = distance * 2 + (index % 9) * 25;
   return {
+    outcome,
     distance,
     score,
     durationMs,
@@ -473,6 +488,36 @@ async function sendTx(publicClient, walletClient, request, label) {
   return hash;
 }
 
+async function claimEligibleAchievements({ cfg, publicClient, walletClient, address }) {
+  const state = await apiJson(cfg.apiUrl, `/api/achievements/${address}`);
+  const claimable = Array.isArray(state.claimable) ? state.claimable : [];
+  if (claimable.length === 0) {
+    console.log('  achievements: none currently claimable');
+    return [];
+  }
+
+  const claimed = [];
+  for (const badgeId of claimable) {
+    try {
+      const voucher = await apiJson(cfg.apiUrl, '/api/achievements/claim', { wallet: address, badgeId });
+      const txHash = await sendTx(publicClient, walletClient, {
+        to: cfg.arcadeItems,
+        data: encodeFunctionData({
+          abi: CONTRACTS.arcadeItems,
+          functionName: 'mintAchievementBadge',
+          args: [BigInt(voucher.badgeId), BigInt(voucher.deadline), voucher.signature],
+        }),
+      }, `achievement #${badgeId}`);
+      await apiJson(cfg.apiUrl, '/api/achievements/sync', { wallet: address, badgeId, txHash });
+      claimed.push(badgeId);
+    } catch (error) {
+      console.log(`  achievement #${badgeId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  console.log(`  achievements: claimed ${claimed.length}/${claimable.length}`);
+  return claimed;
+}
+
 async function runCheckinWallet({ cfg, chain, publicClient, mnemonic, index, opts }) {
   const account = derive(mnemonic, index);
   const walletClient = createWalletClient({ account, chain, transport: http(cfg.rpcUrl) });
@@ -500,7 +545,7 @@ async function runAutoplayerWallet({ cfg, chain, publicClient, mnemonic, index, 
   console.log(`\n[${index}] ${address}`);
 
   if (opts.dryRun) {
-    console.log('  dry-run: would register, sync backend, set name, check in, start ranked run, submit run, claim reward');
+    console.log(`  dry-run: would register, sync backend, set Faker name, check in, start ranked run, submit ${opts.outcome} outcome, claim reward, and claim eligible achievements`);
     return { index, address, ok: true, dryRun: true };
   }
 
@@ -538,7 +583,7 @@ async function runAutoplayerWallet({ cfg, chain, publicClient, mnemonic, index, 
   }, 'startRankedRun');
 
   const started = await apiJson(cfg.apiUrl, '/api/run/start', { wallet: address, gameMode: 'ranked', runId });
-  const stats = makeRunStats(index);
+  const stats = makeRunStats(index, opts.outcome);
   const submitted = await apiJson(cfg.apiUrl, '/api/run/submit', {
     token: started.token,
     name: playerName(opts.names, index),
@@ -562,7 +607,9 @@ async function runAutoplayerWallet({ cfg, chain, publicClient, mnemonic, index, 
   await apiJson(cfg.apiUrl, '/api/run/claim/confirm', { runId, wallet: address, txHash: claimTxHash });
   console.log('  claim: backend confirmation stored');
 
-  return { index, address, ok: true };
+  const achievements = await claimEligibleAchievements({ cfg, publicClient, walletClient, address });
+
+  return { index, address, ok: true, outcome: stats.outcome, achievements };
 }
 
 async function withPool(items, concurrency, delayMs, worker) {
