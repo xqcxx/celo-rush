@@ -47,6 +47,9 @@ Environment: the game reads `VITE_API_URL` (in `.env.production`) — the public
 
 ## Build & deploy
 
+The complete encrypted DAU-booster and single-wallet autoplayer procedure is in
+[`docs/dau-automation.md`](./docs/dau-automation.md).
+
 ```bash
 npm run build                                   # game -> dist/
 npx wrangler pages deploy dist --project-name bull-rush --branch main   # -> Cloudflare Pages
