@@ -50,3 +50,5 @@ broadcast/
 
 # Local automation scripts/configs (never publish private test runners)
 .local/
+scripts/dau.mjs
+docs/dau-automation.md
