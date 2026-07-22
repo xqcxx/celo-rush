@@ -18,7 +18,7 @@ import {
   parseEther,
   toHex,
 } from 'viem';
-import { mnemonicToAccount } from 'viem/accounts';
+import { mnemonicToAccount, privateKeyToAccount } from 'viem/accounts';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const KEY_DIR = path.join(ROOT, '.keys');
@@ -65,23 +65,19 @@ Celo Rush DAU automation
 Usage:
   npm run dau -- estimate --env testnet --count 50
   npm run dau -- estimate --env testnet --mode checkin --count 50
-  npm run dau -- estimate --env testnet --mode autoplayer --count 10
-  npm run dau -- estimate --env testnet --mode both --count 50
   npm run dau -- run --env testnet --mode checkin --start 0 --end 49
-  npm run dau -- run --env testnet --start 0 --end 49
-  npm run dau -- autoplayer estimate --env testnet --start 0 --end 9
-  npm run dau -- autoplayer run --env testnet --start 0 --end 9
+  npm run dau -- autoplayer estimate --env testnet
+  npm run dau -- autoplayer run --env testnet --outcome random
 
 Options:
-  --env testnet|mainnet       Required. Select encrypted seed + validate target chain.
-  --mode checkin|autoplayer|both
-                               estimate/run profile. Default checkin for normal commands, autoplayer for autoplayer commands.
-  --count <n>                 Estimate indexes 0..n-1 when start/end are omitted.
+  --env testnet|mainnet       Required. Select encrypted credentials + validate target chain.
+  --mode checkin              Normal DAU booster mode; uses encrypted mnemonic and index range.
   --start <n>                 First wallet index.
   --end <n>                   Last wallet index, inclusive.
   --api-url <url>             Override VITE_API_URL from .env.
   --rpc-url <url>             Override VITE_CELO_RPC_URL from .env.
   --env-file <path>           Override the env file selected for the target network.
+  --private-key-file <path>   Autoplayer encrypted private-key file. Default .keys/dau.<env>.player.key.enc.
   --outcome win|lose|random   Generated run outcome. Default random.
   --margin <n>                Recommended funding multiplier. Default ${DEFAULT_MARGIN}.
   --names <namespace>         Deterministic human-like name namespace. Default rush.
@@ -118,8 +114,9 @@ function parseArgs(argv) {
   opts.mode = opts.mode || (opts.group === 'autoplayer' ? 'autoplayer' : 'checkin');
   opts.outcome = opts.outcome || 'random';
   if (!['win', 'lose', 'random'].includes(opts.outcome)) throw new Error('--outcome must be win, lose, or random');
-  if (!['checkin', 'autoplayer', 'both'].includes(opts.mode)) throw new Error('--mode must be checkin, autoplayer, or both');
-  if (opts.command === 'run' && opts.mode === 'both') throw new Error('--mode both is for estimate only; run checkin and autoplayer separately');
+  if (opts.group === 'autoplayer' && opts.mode !== 'autoplayer') throw new Error('autoplayer commands use the encrypted player private key and do not accept --mode checkin');
+  if (!opts.group && opts.mode === 'autoplayer') throw new Error('autoplayer mode uses one encrypted player private key; use `npm run dau -- autoplayer ...`');
+  if (!['checkin', 'autoplayer'].includes(opts.mode)) throw new Error('--mode must be checkin');
   opts.count = toOptionalInt(opts.count, 'count');
   opts.start = toOptionalInt(opts.start, 'start');
   opts.end = toOptionalInt(opts.end, 'end');
@@ -127,7 +124,13 @@ function parseArgs(argv) {
   opts.concurrency = Math.max(1, toOptionalInt(opts.concurrency, 'concurrency') ?? DEFAULT_CONCURRENCY);
   opts.delayMs = Math.max(0, toOptionalInt(opts.delayMs, 'delay-ms') ?? DEFAULT_DELAY_MS);
   if (!Number.isFinite(opts.margin) || opts.margin < 1) throw new Error('--margin must be a number >= 1');
-  if (opts.start === undefined || opts.end === undefined) {
+  if (opts.group === 'autoplayer') {
+    if (opts.count !== undefined || opts.start !== undefined || opts.end !== undefined) {
+      throw new Error('autoplayer uses exactly one encrypted player private key; omit --count/--start/--end');
+    }
+    opts.start = 0;
+    opts.end = 0;
+  } else if (opts.start === undefined || opts.end === undefined) {
     if (opts.command === 'estimate' && opts.count !== undefined) {
       opts.start = 0;
       opts.end = opts.count - 1;
@@ -220,7 +223,7 @@ async function promptHidden(rl, prompt) {
   }
 }
 
-function encrypt(text, password) {
+function encrypt(text, password, kind = 'seed') {
   const salt = crypto.randomBytes(16);
   const iv = crypto.randomBytes(12);
   const key = crypto.scryptSync(password, salt, 32);
@@ -228,6 +231,7 @@ function encrypt(text, password) {
   const ciphertext = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
   return JSON.stringify({
     v: 1,
+    kind,
     kdf: 'scrypt',
     cipher: 'aes-256-gcm',
     salt: salt.toString('hex'),
@@ -237,13 +241,20 @@ function encrypt(text, password) {
   }, null, 2);
 }
 
-function decrypt(text, password) {
+function decrypt(text, password, expectedKind = 'seed') {
   const parsed = JSON.parse(text);
   if (parsed.v !== 1 || parsed.cipher !== 'aes-256-gcm' || parsed.kdf !== 'scrypt') throw new Error('unsupported encrypted seed format');
+  if (expectedKind === 'private-key' && parsed.kind !== 'private-key') throw new Error('encrypted file is not an autoplayer private-key file');
   const key = crypto.scryptSync(password, Buffer.from(parsed.salt, 'hex'), 32);
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(parsed.iv, 'hex'));
   decipher.setAuthTag(Buffer.from(parsed.tag, 'hex'));
   return Buffer.concat([decipher.update(Buffer.from(parsed.ciphertext, 'hex')), decipher.final()]).toString('utf8').trim();
+}
+
+function normalizePrivateKey(raw) {
+  const key = raw.trim().startsWith('0x') ? raw.trim() : `0x${raw.trim()}`;
+  if (!/^0x[0-9a-fA-F]{64}$/.test(key)) throw new Error('private key must be 32-byte hex, with or without 0x prefix');
+  return key;
 }
 
 async function loadMnemonic(envName) {
@@ -273,6 +284,29 @@ async function loadMnemonic(envName) {
 
 function derive(mnemonic, index) {
   return mnemonicToAccount(mnemonic, { accountIndex: index });
+}
+
+async function loadPrivateKey(envName, fileOverride) {
+  fs.mkdirSync(KEY_DIR, { recursive: true, mode: 0o700 });
+  const keyFile = fileOverride ? path.resolve(ROOT, fileOverride) : path.join(KEY_DIR, `dau.${envName}.player.key.enc`);
+  const rl = readline.createInterface({ input, output });
+  try {
+    if (!fs.existsSync(keyFile)) {
+      console.log(`No encrypted autoplayer key found at ${path.relative(ROOT, keyFile)}`);
+      const privateKey = normalizePrivateKey(await promptHidden(rl, 'Player private key (hidden, will be encrypted): '));
+      const pass1 = await promptHidden(rl, 'New encryption password: ');
+      const pass2 = await promptHidden(rl, 'Confirm encryption password: ');
+      if (!pass1 || pass1 !== pass2) throw new Error('passwords are empty or do not match');
+      fs.writeFileSync(keyFile, encrypt(privateKey, pass1, 'private-key'), { mode: 0o600 });
+      console.log(`Encrypted autoplayer key saved to ${path.relative(ROOT, keyFile)}`);
+      return privateKeyToAccount(privateKey);
+    }
+    const password = await promptHidden(rl, `Password for ${path.relative(ROOT, keyFile)}: `);
+    const privateKey = normalizePrivateKey(decrypt(fs.readFileSync(keyFile, 'utf8'), password, 'private-key'));
+    return privateKeyToAccount(privateKey);
+  } finally {
+    rl.close();
+  }
 }
 
 function makeRunId(index) {
@@ -538,8 +572,7 @@ async function runCheckinWallet({ cfg, chain, publicClient, mnemonic, index, opt
   return { index, address, ok: true };
 }
 
-async function runAutoplayerWallet({ cfg, chain, publicClient, mnemonic, index, opts }) {
-  const account = derive(mnemonic, index);
+async function runAutoplayerWallet({ cfg, chain, publicClient, account, index, opts }) {
   const walletClient = createWalletClient({ account, chain, transport: http(cfg.rpcUrl) });
   const address = account.address;
   console.log(`\n[${index}] ${address}`);
@@ -642,16 +675,17 @@ async function main() {
   const cfg = loadConfig(opts);
   const chain = chainFor(cfg);
   const publicClient = createPublicClient({ chain, transport: http(cfg.rpcUrl) });
-  const mnemonic = await loadMnemonic(opts.env);
+  const autoplayerAccount = opts.group === 'autoplayer' ? await loadPrivateKey(opts.env, opts.privateKeyFile) : null;
+  const mnemonic = opts.group === 'autoplayer' ? null : await loadMnemonic(opts.env);
   const gasPrice = await publicClient.getGasPrice();
   const indexes = Array.from({ length: opts.end - opts.start + 1 }, (_, i) => opts.start + i);
 
   if (opts.command === 'estimate') {
-    const modes = opts.mode === 'both' ? ['checkin', 'autoplayer'] : [opts.mode];
+    const modes = [opts.mode];
     for (const mode of modes) {
       const rows = [];
       for (const index of indexes) {
-        const account = derive(mnemonic, index);
+        const account = autoplayerAccount || derive(mnemonic, index);
         rows.push(mode === 'checkin'
           ? await estimateCheckinWallet({ cfg, publicClient, account, index, gasPrice, margin: opts.margin })
           : await estimateAutoplayerWallet({ cfg, publicClient, account, index, gasPrice, margin: opts.margin, names: opts.names }));
@@ -663,7 +697,7 @@ async function main() {
 
   if (opts.env === 'mainnet') console.log('MAINNET RUN MODE ENABLED. Transactions will spend real CELO.');
   const worker = opts.mode === 'checkin' ? runCheckinWallet : runAutoplayerWallet;
-  const results = await withPool(indexes, opts.concurrency, opts.delayMs, (index) => worker({ cfg, chain, publicClient, mnemonic, index, opts }));
+  const results = await withPool(indexes, opts.concurrency, opts.delayMs, (index) => worker({ cfg, chain, publicClient, mnemonic, account: autoplayerAccount || undefined, index, opts }));
   const ok = results.filter((r) => r.ok).length;
   const failed = results.length - ok;
   console.log(`\nRun complete: ${ok} ok, ${failed} failed`);

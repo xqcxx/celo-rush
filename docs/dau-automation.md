@@ -6,10 +6,10 @@ The script is intended for controlled testing. Use `estimate` before `run`, espe
 
 ## What It Does
 
-There are two profiles:
+There are two independent modes:
 
-- `checkin`: lightweight DAU generation. It only calls `CheckIn.checkIn()` for wallets that have not checked in today.
-- `autoplayer`: full ranked gameplay simulation.
+- `DAU booster` (`run --mode checkin`): uses an encrypted mnemonic and processes the requested derivation index range.
+- `autoplayer` (`autoplayer estimate|run`): uses one player's encrypted private key and simulates that one wallet.
 
 The full ranked autoplayer profile is:
 
@@ -64,12 +64,23 @@ npm run dau -- help
 
 ## Encrypted Interaction Mnemonic
 
-The first time you run the script for an environment, it asks you to paste a mnemonic and set an encryption password.
+The first time you run the DAU booster for an environment, it asks you to paste a mnemonic and set an encryption password.
 
 The mnemonic is encrypted with AES-256-GCM and saved with mode `0600`. Later runs
 prompt only for the password. The script never reads private keys from a plaintext
 file, command-line argument, or environment variable; derived private keys exist
 only in process memory long enough to sign a transaction and are never printed.
+
+The autoplayer uses a separate encrypted player key file:
+
+```text
+.keys/dau.testnet.player.key.enc
+.keys/dau.mainnet.player.key.enc
+```
+
+It prompts for the private key only when creating that file, encrypts it with the
+same AES-256-GCM format, and prompts for the file password on later runs. It does
+not use the DAU mnemonic or any deployer key file.
 
 Encrypted files are stored at:
 
@@ -94,19 +105,7 @@ Estimate 50 lightweight check-in DAUs, indexes `0..49`:
 npm run dau -- estimate --env testnet --mode checkin --count 50
 ```
 
-Estimate 50 full ranked autoplayer users:
-
-```bash
-npm run dau -- estimate --env testnet --mode autoplayer --count 50
-```
-
-Estimate both profiles in one command:
-
-```bash
-npm run dau -- estimate --env testnet --mode both --count 50
-```
-
-The default normal estimate mode is `checkin`, so this is equivalent:
+The default DAU booster estimate mode is `checkin`:
 
 ```bash
 npm run dau -- estimate --env testnet --count 50
@@ -142,21 +141,22 @@ Run lightweight check-in DAUs for wallets `0..49` on testnet:
 npm run dau -- run --env testnet --mode checkin --start 0 --end 49
 ```
 
-Run full ranked autoplayer users for wallets `0..49` on testnet:
+The autoplayer is a separate one-wallet command and does not accept an index range:
 
 ```bash
-npm run dau -- run --env testnet --mode autoplayer --start 0 --end 49
+npm run dau -- autoplayer estimate --env testnet
+npm run dau -- autoplayer run --env testnet --outcome random
 ```
 
 Choose generated outcomes explicitly:
 
 ```bash
-npm run dau -- run --env testnet --mode autoplayer --outcome win --start 0 --end 9
-npm run dau -- run --env testnet --mode autoplayer --outcome lose --start 10 --end 19
-npm run dau -- run --env testnet --mode autoplayer --outcome random --start 20 --end 29
+npm run dau -- autoplayer run --env testnet --outcome win
+npm run dau -- autoplayer run --env testnet --outcome lose
+npm run dau -- autoplayer run --env testnet --outcome random
 ```
 
-Each wallet receives a deterministic Faker-generated human-like name. `win` runs
+The autoplayer wallet receives a deterministic Faker-generated human-like name. `win` runs
 reach roughly 6K meters and can unlock distance and clean-run achievements;
 `lose` runs remain plausible but stay below the 1K threshold. After every run,
 the script fetches claimable badges and completes the backend voucher, on-chain
@@ -171,30 +171,23 @@ npm run dau -- run --env testnet --mode checkin --start 0 --end 49 --concurrency
 Preview the run plan without sending transactions:
 
 ```bash
-npm run dau -- run --env testnet --mode autoplayer --start 0 --end 9 --dry-run
+npm run dau -- autoplayer run --env testnet --outcome random --dry-run
 ```
 
 ## Autoplayer Commands
 
-Autoplayer mode is an alias for `--mode autoplayer`, with generated gameplay stats submitted through the backend.
+Autoplayer mode uses the encrypted player private key and submits generated gameplay stats through the backend.
 
-Estimate:
+Estimate one player:
 
 ```bash
-npm run dau -- autoplayer estimate --env testnet --start 0 --end 9
+npm run dau -- autoplayer estimate --env testnet
 ```
 
-Run:
+Run one player:
 
 ```bash
-npm run dau -- autoplayer run --env testnet --start 0 --end 9
-```
-
-These are equivalent:
-
-```bash
-npm run dau -- autoplayer run --env testnet --start 0 --end 9
-npm run dau -- run --env testnet --mode autoplayer --start 0 --end 9
+npm run dau -- autoplayer run --env testnet --outcome random
 ```
 
 ## Mainnet Safety
