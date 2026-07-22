@@ -50,6 +50,8 @@ const CONTRACTS = {
   ],
   rush: [
     { type: 'function', name: 'balanceOf', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'uint256' }], stateMutability: 'view' },
+    { type: 'function', name: 'allowance', inputs: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }], outputs: [{ type: 'uint256' }], stateMutability: 'view' },
+    { type: 'function', name: 'approve', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }], stateMutability: 'nonpayable' },
   ],
 };
 
@@ -76,6 +78,7 @@ Options:
   --end <n>                   Last wallet index, inclusive.
   --api-url <url>             Override VITE_API_URL from .env.
   --rpc-url <url>             Override VITE_CELO_RPC_URL from .env.
+  --env-file <path>           Override the env file selected for the target network.
   --margin <n>                Recommended funding multiplier. Default ${DEFAULT_MARGIN}.
   --names <namespace>         Deterministic human-like name namespace. Default rush.
   --concurrency <n>           Run concurrency. Default ${DEFAULT_CONCURRENCY}.
@@ -156,7 +159,13 @@ function readEnv(filePath) {
 }
 
 function loadConfig(opts) {
-  const env = { ...readEnv(path.join(ROOT, '.env')), ...process.env };
+  const envCandidates = opts.envFile
+    ? [path.resolve(ROOT, opts.envFile)]
+    : opts.env === 'mainnet'
+      ? [path.join(ROOT, '.env.mainnet'), path.join(ROOT, '.env.production'), path.join(ROOT, '.env')]
+      : [path.join(ROOT, '.env.t'), path.join(ROOT, '.env')];
+  const envPath = envCandidates.find((candidate) => fs.existsSync(candidate));
+  const env = { ...(envPath ? readEnv(envPath) : {}), ...process.env };
   const chainId = Number(env.VITE_CHAIN_ID || (opts.env === 'mainnet' ? 42220 : 11142220));
   const expectedChainId = opts.env === 'mainnet' ? 42220 : 11142220;
   if (chainId !== expectedChainId) {
@@ -167,17 +176,19 @@ function loadConfig(opts) {
     envName: opts.env,
     rpcUrl: opts.rpcUrl || env.VITE_CELO_RPC_URL,
     apiUrl: (opts.apiUrl || env.VITE_API_URL || '').replace(/\/$/, ''),
+    envFile: envPath ? path.relative(ROOT, envPath) : '(process environment)',
     gameToken: env.VITE_GAMETOKEN_CONTRACT_ADDRESS,
     playerRegistry: env.VITE_PLAYER_REGISTRY_CONTRACT_ADDRESS,
     checkIn: env.VITE_CHECKIN_CONTRACT_ADDRESS,
     runRewards: env.VITE_RUN_REWARDS_CONTRACT_ADDRESS,
   };
+  const source = envPath ? path.relative(ROOT, envPath) : 'process environment';
   for (const [key, value] of Object.entries(cfg)) {
-    if (['envName', 'chainId', 'apiUrl', 'rpcUrl'].includes(key)) continue;
-    if (!isAddress(value || '')) throw new Error(`missing or invalid ${key} contract address in .env`);
+    if (['envName', 'chainId', 'apiUrl', 'rpcUrl', 'envFile'].includes(key)) continue;
+    if (!isAddress(value || '')) throw new Error(`missing or invalid ${key} contract address in ${source}; pass --env-file for the correct network`);
   }
-  if (!cfg.rpcUrl) throw new Error('missing VITE_CELO_RPC_URL in .env or --rpc-url');
-  if (!cfg.apiUrl) throw new Error('missing VITE_API_URL in .env or --api-url');
+  if (!cfg.rpcUrl) throw new Error(`missing VITE_CELO_RPC_URL in ${source} or --rpc-url`);
+  if (!cfg.apiUrl) throw new Error(`missing VITE_API_URL in ${source} or --api-url`);
   return cfg;
 }
 
@@ -295,6 +306,7 @@ function makeRunStats(index) {
     snipersSurvived: 3 + (index % 4),
     mevAvoided: 2 + (index % 3),
     maxCombo: 4 + (index % 6),
+    damageTaken: 0,
   };
 }
 
@@ -309,7 +321,10 @@ async function apiJson(apiUrl, pathName, body) {
       signal: controller.signal,
     });
     const json = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(json?.error || `${pathName} failed with ${res.status}`);
+    if (!res.ok) {
+      const detail = json?.error || json?.message || `${pathName} failed with ${res.status}`;
+      throw new Error(`${pathName} ${res.status}: ${detail}`);
+    }
     return json;
   } finally {
     clearTimeout(timeout);
@@ -351,12 +366,13 @@ async function estimateCheckinWallet({ cfg, publicClient, account, index, gasPri
 
 async function estimateAutoplayerWallet({ cfg, publicClient, account, index, gasPrice, margin, names }) {
   const address = account.address;
-  const [celoBalance, rushBalance, registered, checkedIn, hasFreeTicket] = await Promise.all([
+  const [celoBalance, rushBalance, registered, checkedIn, hasFreeTicket, allowance] = await Promise.all([
     publicClient.getBalance({ address }),
     publicClient.readContract({ address: cfg.gameToken, abi: CONTRACTS.rush, functionName: 'balanceOf', args: [address] }).catch(() => 0n),
     publicClient.readContract({ address: cfg.playerRegistry, abi: CONTRACTS.playerRegistry, functionName: 'isRegistered', args: [address] }).catch(() => false),
     publicClient.readContract({ address: cfg.checkIn, abi: CONTRACTS.checkIn, functionName: 'hasCheckedInToday', args: [address] }).catch(() => false),
     publicClient.readContract({ address: cfg.runRewards, abi: CONTRACTS.runRewards, functionName: 'hasFreeTicket', args: [address] }).catch(() => true),
+    publicClient.readContract({ address: cfg.gameToken, abi: CONTRACTS.rush, functionName: 'allowance', args: [address, cfg.runRewards] }).catch(() => 0n),
   ]);
 
   let gas = 0n;
@@ -375,6 +391,12 @@ async function estimateAutoplayerWallet({ cfg, publicClient, account, index, gas
   }
 
   const runId = makeRunId(index);
+  const needsEntryApproval = !hasFreeTicket && allowance < parseEther('5');
+  if (needsEntryApproval) {
+    const data = encodeFunctionData({ abi: CONTRACTS.rush, functionName: 'approve', args: [cfg.runRewards, parseEther('5')] });
+    gas += await estimateMaybe(publicClient, { account: address, to: cfg.gameToken, data }, 60_000n);
+    actions.push('approveRunEntry');
+  }
   const startData = encodeFunctionData({ abi: CONTRACTS.runRewards, functionName: 'startRankedRun', args: [runId] });
   const startGas = await estimateMaybe(publicClient, { account: address, to: cfg.runRewards, data: startData }, 120_000n);
   gas += startGas;
@@ -421,6 +443,7 @@ function printEstimate({ opts, cfg, gasPrice, rows, mode }) {
   console.log(`Profile actions: ${profileActions(mode)}`);
   console.log(`Command mode: ${opts.group === 'autoplayer' ? 'autoplayer ' : ''}${opts.command}; selected mode: ${mode}`);
   console.log(`Env: ${cfg.envName}`);
+  console.log(`Config file: ${cfg.envFile}`);
   console.log(`Backend: ${cfg.apiUrl}`);
   console.log(`Wallets: ${rows.length} (${opts.start}-${opts.end})`);
   console.log(`Live gas price: ${formatEther(gasPrice)} CELO/gas`);
@@ -498,6 +521,17 @@ async function runAutoplayerWallet({ cfg, chain, publicClient, mnemonic, index, 
   }
 
   const runId = makeRunId(index);
+  const hasFreeTicket = await publicClient.readContract({ address: cfg.runRewards, abi: CONTRACTS.runRewards, functionName: 'hasFreeTicket', args: [address] }).catch(() => false);
+  if (!hasFreeTicket) {
+    const allowance = await publicClient.readContract({ address: cfg.gameToken, abi: CONTRACTS.rush, functionName: 'allowance', args: [address, cfg.runRewards] }).catch(() => 0n);
+    const entryCost = parseEther('5');
+    if (allowance < entryCost) {
+      await sendTx(publicClient, walletClient, {
+        to: cfg.gameToken,
+        data: encodeFunctionData({ abi: CONTRACTS.rush, functionName: 'approve', args: [cfg.runRewards, entryCost] }),
+      }, 'approveRunEntry');
+    }
+  }
   await sendTx(publicClient, walletClient, {
     to: cfg.runRewards,
     data: encodeFunctionData({ abi: CONTRACTS.runRewards, functionName: 'startRankedRun', args: [runId] }),
@@ -517,7 +551,7 @@ async function runAutoplayerWallet({ cfg, chain, publicClient, mnemonic, index, 
   console.log(`  submit: ${stats.distance}m score=${stats.score} position=${submitted.position ?? 'n/a'}`);
 
   const voucher = await apiJson(cfg.apiUrl, '/api/run/claim', { wallet: address, runId, score: stats.score });
-  await sendTx(publicClient, walletClient, {
+  const claimTxHash = await sendTx(publicClient, walletClient, {
     to: cfg.runRewards,
     data: encodeFunctionData({
       abi: CONTRACTS.runRewards,
@@ -525,6 +559,8 @@ async function runAutoplayerWallet({ cfg, chain, publicClient, mnemonic, index, 
       args: [voucher.runId, BigInt(voucher.score), BigInt(voucher.rewardAmount), BigInt(voucher.deadline), voucher.signature],
     }),
   }, 'claimRunReward');
+  await apiJson(cfg.apiUrl, '/api/run/claim/confirm', { runId, wallet: address, txHash: claimTxHash });
+  console.log('  claim: backend confirmation stored');
 
   return { index, address, ok: true };
 }

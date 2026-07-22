@@ -23,10 +23,13 @@ The full ranked autoplayer profile is:
 8. Submit plausible anti-cheat-safe run stats.
 9. Request a reward voucher from the backend.
 10. Claim the ranked reward on-chain.
+11. Confirm the successful claim receipt with the backend so the database records the claim.
 
 ## Setup
 
-The script reads configuration from the root `.env` file:
+The script selects `.env.t` for `--env testnet` and `.env.production` (then `.env`) for
+`--env mainnet`. For a mainnet run, use a local untracked `.env.mainnet` or pass
+`--env-file` explicitly so testnet and mainnet addresses cannot be mixed:
 
 ```env
 VITE_API_URL=http://localhost:8787
@@ -36,6 +39,12 @@ VITE_GAMETOKEN_CONTRACT_ADDRESS=0x...
 VITE_PLAYER_REGISTRY_CONTRACT_ADDRESS=0x...
 VITE_CHECKIN_CONTRACT_ADDRESS=0x...
 VITE_RUN_REWARDS_CONTRACT_ADDRESS=0x...
+```
+
+Override the selected file when needed:
+
+```bash
+npm run dau -- estimate --env mainnet --env-file .env.mainnet --count 10
 ```
 
 For local testing, make sure the backend is running and signer-loaded:
@@ -177,13 +186,16 @@ npm run dau -- estimate --env mainnet --count 10
 npm run dau -- run --env mainnet --start 0 --end 9 --yes
 ```
 
-Before mainnet runs, make sure `.env` points to mainnet:
+Before mainnet runs, make sure the selected env file points to mainnet:
 
 ```env
 VITE_CHAIN_ID=42220
 VITE_CELO_RPC_URL=https://...
 VITE_API_URL=https://your-backend.example
 ```
+
+If a wallet has already used its daily free ticket, the autoplayer checks and
+submits a 5 RUSH allowance before starting the ranked run.
 
 And make sure all contract addresses are mainnet deployments.
 
@@ -207,8 +219,10 @@ Example output names look like `MayaS04` or `LiamB17`, not `bot_0001`.
 
 ## Common Failures
 
-- `--env testnet expects chain 11142220`: `.env` has the wrong `VITE_CHAIN_ID`.
+- `--env testnet expects chain 11142220`: the selected env file has the wrong `VITE_CHAIN_ID`.
 - `missing VITE_CELO_RPC_URL`: set RPC URL in `.env` or pass `--rpc-url`.
+- `missing or invalid ... contract address`: pass the correct network file with `--env-file`; do not reuse testnet addresses for mainnet.
+- API errors now include the HTTP status and backend error code; inspect Render logs for unexpected 500s.
 - `player_not_registered`: backend sync failed or contract registration transaction failed.
 - `backend flagged generated run as suspicious`: generated stats exceeded anti-cheat gates; reduce concurrency and retry.
 - `insufficient funds`: fund the wallet with the recommended CELO amount from estimate mode.
